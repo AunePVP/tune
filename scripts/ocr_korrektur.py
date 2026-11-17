@@ -166,9 +166,16 @@ form.seite{display:flex;flex-direction:column;min-height:0;padding:.7rem;gap:.6r
 .typ label{border:1px solid var(--line);border-radius:6px;padding:.35rem .7rem;cursor:pointer}
 .typ input{position:absolute;opacity:0}.typ label:has(input:checked){background:var(--accent);border-color:var(--accent);color:#fff}
 .typ .st{margin-left:auto;color:var(--dim);font-size:12px}
-textarea{flex:1;min-height:0;width:100%;resize:none;font:13px/1.5 ui-monospace,Consolas,monospace;color:var(--text);
-background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:.7rem}
+#feld{position:relative;flex:1;min-height:0;background:var(--panel);border-radius:6px}
+#feld textarea,#hinter{position:absolute;inset:0;width:100%;height:100%;margin:0;resize:none;
+font:13px/1.5 ui-monospace,Consolas,monospace;padding:.7rem;border:1px solid var(--line);border-radius:6px;
+white-space:pre-wrap;overflow-wrap:break-word;overflow-y:scroll;tab-size:4}
+#hinter{color:transparent;border-color:transparent;pointer-events:none}
+#hinter mark{color:transparent;background:rgba(217,138,74,.45);border-radius:2px}
+#feld textarea{color:var(--text);background:transparent}
 textarea:focus{outline:1px solid var(--accent)}
+.fehlt{position:absolute;border:2px solid var(--warn);background:rgba(217,138,74,.15);pointer-events:none}
+#abw{font-size:12px;color:var(--dim);margin-left:.6rem;white-space:nowrap;cursor:pointer}
 .knoepfe{display:flex;gap:.5rem;align-items:center}.knoepfe .sp{flex:1}.gefahr{color:var(--warn)}
 details{color:var(--dim)}details pre{max-height:14rem}
 pre{white-space:pre-wrap;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:.6rem;
@@ -211,7 +218,8 @@ window.addEventListener('resize',zeichnen);img.addEventListener('load',zeichnen)
 // the text on the right is a draft by another model and never identical to what was read at that place.
 let zeilen=[];
 fetch('/bloecke/'+img.dataset.nr).then(r=>r.json()).then(d=>{zeilen=d;
- hinweis.textContent=d.length?'Klick auf eine Textstelle markiert sie rechts':'keine Textlagen für diese Seite'}).catch(()=>{});
+ hinweis.textContent=d.length?'Klick auf eine Textstelle markiert sie rechts':'keine Textlagen für diese Seite';
+ abgleich()}).catch(()=>{});
 function norm(t){return t.toLowerCase().replace(/[^a-z0-9äöüß]+/g,'')}
 function tripel(t){const m=new Map();for(let k=0;k+3<=t.length;k++){const g=t.substr(k,3);m.set(g,(m.get(g)||0)+1)}return m}
 function gleichheit(a,b){let n=0,sa=0,sb=0;for(const v of a.values())sa+=v;for(const v of b.values())sb+=v;
@@ -243,6 +251,30 @@ img.addEventListener('click',e=>{if(!zeilen.length)return;
  hinweis.textContent='';feld.focus();feld.setSelectionRange(f.von,f.bis);
  const vor=feld.value.slice(0,f.von).split('\n').length-1,alle=feld.value.split('\n').length;
  feld.scrollTop=Math.max(0,feld.scrollHeight*vor/Math.max(1,alle)-feld.clientHeight/3)});
+// Deviations from Tesseract, as a hint where to look (Tesseract is often wrong itself): in the text every word that
+// does not occur in what Tesseract read on this page, on the page every line Tesseract read that is not found in
+// the text. Updated while typing.
+const hinter=document.getElementById('hinter'),an=document.getElementById('an'),
+ AUSNAHME=new Set(['stempel','handschriftlich','unleserlich','unterschrift']);
+try{an.checked=localStorage.getItem('abweichungen')!=='aus'}catch(e){}
+function falten(t){return t.toLowerCase().replace(/ä/g,'a').replace(/ö/g,'o').replace(/ü/g,'u').replace(/ß/g,'ss')
+ .replace(/[^a-z0-9]+/g,'')}
+function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function abgleich(){for(const m of dreh.querySelectorAll('.fehlt'))m.remove();
+ if(!an.checked||!zeilen.length){hinter.textContent='';return}
+ const alles=falten(zeilen.map(z=>z.t).join(' ')),text=feld.value,re=/[0-9A-Za-zÄÖÜäöüß]+/g;
+ let erste=text.indexOf('\n');if(erste<0)erste=text.length;let out='',pos=0,m;
+ while((m=re.exec(text))){if(m.index<erste)continue;const w=m[0],f=falten(w);
+  if(f.length<(/^[0-9]+$/.test(w)?2:3)||AUSNAHME.has(f)||alles.includes(f))continue;
+  out+=esc(text.slice(pos,m.index))+'<mark>'+esc(w)+'</mark>';pos=m.index+w.length}
+ hinter.innerHTML=out+esc(text.slice(pos))+' ';hinter.scrollTop=feld.scrollTop;
+ for(const z of zeilen){if(falten(z.t).length<4||sucheImText(z.t))continue;
+  const d=document.createElement('div');d.className='fehlt';d.title='fehlt im Text: '+z.t;
+  d.style.left=z.x*100+'%';d.style.top=z.y*100+'%';d.style.width=z.w*100+'%';d.style.height=z.h*100+'%';
+  dreh.appendChild(d)}}
+let warten=0;feld.addEventListener('input',()=>{clearTimeout(warten);warten=setTimeout(abgleich,500)});
+feld.addEventListener('scroll',()=>{hinter.scrollTop=feld.scrollTop});
+an.addEventListener('change',()=>{try{localStorage.setItem('abweichungen',an.checked?'an':'aus')}catch(e){};abgleich()});
 function vomText(){if(!zeilen.length||feld.selectionStart!==feld.selectionEnd)return;
  const t=feld.value,c=feld.selectionStart,a=t.lastIndexOf('\n',c-1)+1;let b=t.indexOf('\n',c);if(b<0)b=t.length;
  let stueck=t.slice(a,b);if(stueck.length>90)stueck=t.slice(Math.max(a,c-45),Math.min(b,c+45));
@@ -377,12 +409,15 @@ class Tool:
                 f"<button type='button' id='passen'>Einpassen</button><button type='button' id='voll'>100 %</button>"
                 f"<button type='button' id='links' title='nach links drehen'>⟲</button>"
                 f"<button type='button' id='rechts' title='nach rechts drehen'>⟳</button>"
+                f"<label id='abw' title='orange im Text: steht so nicht bei Tesseract · orange im Bild: Zeile fehlt "
+                f"im Text'><input type='checkbox' id='an' checked> Abweichungen zu Tesseract</label>"
                 f"<span id='hinweis'></span></div>"
                 f"<div id='bild'><div id='blatt'><div id='dreh'><img src='/bild/{i}' alt='' "
                 f"data-name='{html.escape(page.name)}' data-nr='{i}'><div id='marke'></div></div></div></div></div>"
                 f"<form class='seite' method='post' action='/seite/{i}'><div class='typ'><b>Typ</b>{radios}"
                 f"<span class='st'>Seite {i + 1} · {states[i] if has_text(page) else 'noch kein Entwurf'} · Alt+1–4</span></div>"
-                f"<textarea name='text' autofocus spellcheck='false'>{html.escape(text)}</textarea>"
+                f"<div id='feld'><div id='hinter'></div>"
+                f"<textarea name='text' autofocus spellcheck='false'>{html.escape(text)}</textarea></div>"
                 f"<div class='knoepfe'><button class='primary' name='aktion' value='speichern'>Speichern &amp; weiter "
                 f"(Strg+Enter)</button><a class='btn' href='/seite/{after}'>Überspringen</a><span class='sp'></span>"
                 f"<button class='gefahr' name='aktion' value='verwerfen' formnovalidate>Nicht verwenden</button></div>"
