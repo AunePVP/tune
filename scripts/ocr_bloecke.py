@@ -132,7 +132,8 @@ def read_page(page: Path, languages: str, timeout: float) -> dict | None:
             if degrees:
                 image = Path(tmp) / f"{degrees}.png"
                 with Image.open(page) as original:
-                    original.rotate(-degrees, expand=True).save(image)  # clockwise
+                    upright = original if original.mode in ("L", "RGB") else original.convert("RGB")  # e.g. CMYK
+                    upright.rotate(-degrees, expand=True).save(image)  # clockwise
             tsv = _tesseract(image, languages, timeout)
             if tsv is None:
                 if best is None and degrees == order[-1]:
@@ -167,7 +168,11 @@ def main(argv: list[str] | None = None) -> int:
     stats = {"seiten": 0, "ohne_text": 0, "gedreht": 0, "fehler": 0}
 
     def one(page: Path) -> None:
-        result = read_page(page, args.sprachen, args.timeout)
+        try:
+            result = read_page(page, args.sprachen, args.timeout)
+        except Exception as exc:  # one unreadable image must not stop the run
+            print(f"  Fehler bei einer Seite: {type(exc).__name__}: {str(exc)[:120]}", flush=True)
+            result = None
         if result is None:
             stats["fehler"] += 1
             return
