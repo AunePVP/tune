@@ -196,7 +196,8 @@ const cur=liste.querySelector('.cur');if(cur)cur.scrollIntoView({block:'center'}
 const bild=document.getElementById('bild'),blatt=document.getElementById('blatt'),dreh=document.getElementById('dreh'),
  img=dreh.querySelector('img'),marke=document.getElementById('marke'),stufe=document.getElementById('stufe'),
  hinweis=document.getElementById('hinweis'),feld=document.querySelector('textarea'),merk='drehung:'+img.dataset.name;
-let grad=0,zoom=null;try{grad=parseInt(localStorage.getItem(merk)||'0')||0}catch(e){}
+let grad=0,zoom=null,gemerkt=false;
+try{const g=localStorage.getItem(merk);if(g!==null){grad=parseInt(g)||0;gemerkt=true}}catch(e){}
 function passend(){const nw=img.naturalWidth,nh=img.naturalHeight,quer=grad%180!==0;
  return Math.min((bild.clientWidth-24)/(quer?nh:nw),(bild.clientHeight-24)/(quer?nw:nh))}
 function zeichnen(){const nw=img.naturalWidth,nh=img.naturalHeight;if(!nw)return;
@@ -217,8 +218,10 @@ window.addEventListener('resize',zeichnen);img.addEventListener('load',zeichnen)
 // right, the cursor in the text marks the line on the page. The match is found by comparing letter triples, because
 // the text on the right is a draft by another model and never identical to what was read at that place.
 let zeilen=[];
-fetch('/bloecke/'+img.dataset.nr).then(r=>r.json()).then(d=>{zeilen=d;
- hinweis.textContent=d.length?'Klick auf eine Textstelle markiert sie rechts':'keine Textlagen für diese Seite';
+fetch('/bloecke/'+img.dataset.nr).then(r=>r.json()).then(d=>{zeilen=Array.isArray(d)?d:(d.zeilen||[]);
+ // a page scanned sideways opens upright, unless the rotation was set by hand before
+ if(!gemerkt&&d.drehung){grad=d.drehung;zeichnen()}
+ hinweis.textContent=zeilen.length?'Klick auf eine Textstelle markiert sie rechts':'keine Textlagen für diese Seite';
  abgleich()}).catch(()=>{});
 function norm(t){return t.toLowerCase().replace(/[^a-z0-9äöüß]+/g,'')}
 function tripel(t){const m=new Map();for(let k=0;k+3<=t.length;k++){const g=t.substr(k,3);m.set(g,(m.get(g)||0)+1)}return m}

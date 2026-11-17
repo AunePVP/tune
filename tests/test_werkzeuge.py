@@ -199,6 +199,13 @@ def test_text_lines_with_their_place_on_the_page(tmp_path):
            "5\t1\t2\t1\t1\t1\t0\t900\t1000\t4\t30\t—\n")
     assert ocr_bloecke.parse_tsv(tsv) == [{"x": 0.1, "y": 0.1, "w": 0.5, "h": 0.02, "t": "Prüfbericht Nr. 4711"}]
     assert ocr_bloecke.parse_tsv("") == []
+    assert ocr_bloecke.score(tsv) == (len("Prüfbericht") + len("Nr4711"), (96 + 91 + 30) / 3)
+    # A line found on the page turned clockwise, as a position on the page as it is stored.
+    line = {"x": 0.1, "y": 0.2, "w": 0.5, "h": 0.05, "t": "a"}
+    assert ocr_bloecke.unrotate(line, 0) == line
+    assert ocr_bloecke.unrotate(line, 90) == {"x": 0.2, "y": 0.4, "w": 0.05, "h": 0.5, "t": "a"}
+    assert ocr_bloecke.unrotate(line, 180) == {"x": 0.4, "y": 0.75, "w": 0.5, "h": 0.05, "t": "a"}
+    assert ocr_bloecke.unrotate(line, 270) == {"x": 0.75, "y": 0.1, "w": 0.05, "h": 0.5, "t": "a"}
     # The correction tool hands the lines of a page to the browser, and an empty list where there are none.
     _pages(tmp_path, 2)
     (tmp_path / "000_Beispiel_S1.bloecke.json").write_text('[{"x":0.1,"y":0.1,"w":0.5,"h":0.02,"t":"Prüfbericht"}]',

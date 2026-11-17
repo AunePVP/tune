@@ -250,7 +250,7 @@ und das Ende des Protokolls (`~/training.training.log`). Es läuft immer nur ein
 starten: `systemctl --user status|restart tune-korrektur`.
 
 Vor dem Korrigieren einmal die Lage der Textzeilen ermitteln (Spark, einige Minuten, fortsetzbar):
-`python3 ~/tune/scripts/ocr_bloecke.py --ordner ~/training`. Im Werkzeug: Klick auf eine Textstelle im Bild markiert
+`~/tune-training/venv/bin/python ~/tune/scripts/ocr_bloecke.py --ordner ~/training` (mit diesem Python werden seitlich gescannte Seiten erst aufrecht gedreht; das Werkzeug zeigt sie dann auch aufrecht an). Im Werkzeug: Klick auf eine Textstelle im Bild markiert
 den passenden Text rechts; der Cursor im Text zeigt die Zeile im Bild. Zoom mit den Knöpfen, Strg+Mausrad oder
 Doppelklick, Drehen mit ⟲/⟳ (nur Ansicht).
 
