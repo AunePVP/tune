@@ -228,7 +228,16 @@ Entwürfe mit Qwen (Spark; Qwen läuft dort als Container `qwen35-4b`, vLLM, Hos
 python3 ~/tune/scripts/ocr_entwurf.py --ordner training --modell "Qwen|http://localhost:8003/v1|qwen35-4b" --extra-body '{"chat_template_kwargs":{"enable_thinking":false}}' --parallel 8
 ```
 
-Korrigieren (PC; Ordner `training` und `scripts/` aus diesem Repository dorthin kopieren):
+Korrigieren **auf dem Spark über Tailscale** (so arbeitet der Nutzer seit dem 17.11.2026; nichts muss kopiert
+werden): Das Korrekturwerkzeug läuft dort als Dienst `tune-korrektur` (systemd des Benutzers, Vorlage
+`training/tune-korrektur.service`) für `~/training` und ist im Browser unter `http://100.97.122.72:8765`
+erreichbar (nur im Tailnet; `--host` nie auf `0.0.0.0`, das Werkzeug hat keine Anmeldung). Der Link „Training“
+öffnet eine Seite mit dem Knopf **„Exportieren und trainieren“**: Er schreibt `~/training.jsonl` und
+`~/training.pruef.jsonl` und startet `training/tune.py trainieren` für das gewählte Modell; die Seite zeigt Läufe
+und das Ende des Protokolls (`~/training.training.log`). Es läuft immer nur ein Training. Dienst ansehen oder neu
+starten: `systemctl --user status|restart tune-korrektur`.
+
+Korrigieren auf dem PC (Alternative; Ordner `training` und `scripts/` aus diesem Repository dorthin kopieren):
 ```powershell
 python scripts\ocr_korrektur.py --ordner training
 ```
@@ -423,7 +432,8 @@ Typzeile oder mit Inhalt bei `TYP: Leer` als Fehler behandeln.
 | `scripts/ocr_vorgabe.py` | die Vorgabe: `PROMPT`, `TYPES`, `split`/`join` der Antwortform |
 | `scripts/ocr_vergleich.py` | Modelle auf einem Seitenordner vergleichen (OpenAI-kompatible Server; Tempo, Tokens, Schleifen; HTML nebeneinander; `--extra-body`; `--vorgabe` für `PROMPT` und Typzeile) |
 | `scripts/ocr_entwurf.py` | Entwürfe nach der Vorgabe erzeugen (`<Seite>.entwurf.txt`, fortsetzbar) |
-| `scripts/ocr_korrektur.py` | Korrigieren im Browser (`<Seite>.soll.txt`), Export als JSONL, getrennt in Training und Prüfsatz nach Dokument (`--pruef-anteil`, `--ohne-dokumente`, `--bild-basis`) |
+| `scripts/ocr_korrektur.py` | Korrigieren im Browser (`<Seite>.soll.txt`), Export als JSONL, getrennt in Training und Prüfsatz nach Dokument (`--pruef-anteil`, `--ohne-dokumente`, `--bild-basis`); `--host` für den Zugriff über Tailscale; Seite „Training“ (Export und Start von `training/tune.py`), wenn `training/` daneben liegt |
+| `training/tune-korrektur.service` | Vorlage: Korrekturwerkzeug als Dienst auf dem Spark |
 | `training/README.md` | Anleitung zum Training: jeder Schritt, jede Einstellung, „war der Lauf gut?“, „zu wenig Speicher“ |
 | `training/einrichten.sh` | Trainingsumgebung in `~/tune-training` anlegen (LLaMA-Factory, PyTorch für CUDA 13; `--quantisierung`: llm-compressor in `venv-quant`) |
 | `training/tune.py` | alle Befehle des Trainings: `pruefen`, `trainieren` (neu oder `--weiter-von`), `laeufe`, `zusammenfuehren`, `quantisieren`, `starten`, `stoppen`, `fragen` (nur Standardbibliothek) |

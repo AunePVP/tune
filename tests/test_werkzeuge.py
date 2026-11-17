@@ -153,3 +153,36 @@ def test_the_comparison_with_the_target_prompt_counts_the_types(tmp_path, chat_s
                          "Seiten mit Stempel | Stempel gesamt")
     assert line.endswith("| 0 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1")
     assert "Typ: Plan" in (tmp_path / "ergebnis" / "vergleich.html").read_text(encoding="utf-8")
+
+
+def test_the_correction_tool_exports_and_starts_a_training_from_the_browser(tmp_path):
+    folder = tmp_path / "seiten"
+    folder.mkdir()
+    _pages(folder, 3)
+    for i, answer in enumerate(["TYP: Text\nBericht", "TYP: Leer"]):
+        (folder / f"00{i}_Beispiel_S1.soll.txt").write_text(answer, encoding="utf-8")
+    # Stands in for training/tune.py: records how it was called.
+    fake = tmp_path / "tune.py"
+    fake.write_text("import sys, pathlib\nif sys.argv[1] == 'trainieren':\n    print('Lauf 001-qwen2b fertig')\n"
+                    "    pathlib.Path(__file__).with_name('aufruf.txt').write_text(' '.join(sys.argv[1:]))\n")
+    tool = ocr_korrektur.Tool(folder, tune_py=fake, share=0.0)
+    server = ocr_korrektur.ThreadingHTTPServer(("127.0.0.1", 0), ocr_korrektur.handler(tool))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        assert "href='/training'" in opener.open(f"{base}/seite/0").read().decode()
+        page = opener.open(f"{base}/training").read().decode()
+        assert "2 von 3 Seiten korrigiert" in page and "Exportieren und trainieren" in page
+        data = urllib.parse.urlencode({"modell": "glm-ocr"}).encode()
+        answer = opener.open(urllib.request.Request(f"{base}/training", data=data, method="POST")).read().decode()
+        assert "Training mit GLM-OCR gestartet (2 Seiten)" in answer
+        tool.job.wait(timeout=30)
+        assert "Lauf 001-qwen2b fertig" in opener.open(f"{base}/training").read().decode()  # the end of the log
+    finally:
+        server.shutdown()
+    target = tmp_path / "seiten.jsonl"
+    assert len(target.read_text(encoding="utf-8").splitlines()) == 2
+    assert (tmp_path / "aufruf.txt").read_text() == f"trainieren --modell glm-ocr --daten {target}"
+    # Without the training tool next to the scripts (the Windows PC) there is no training page.
+    assert ocr_korrektur.Tool(folder)._training_link() == ""

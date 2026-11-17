@@ -1,0 +1,18 @@
+# Korrekturwerkzeug als Dienst auf dem Spark, erreichbar über Tailscale (Beispiel; Adresse und Ordner anpassen).
+#   cp training/tune-korrektur.service ~/.config/systemd/user/ && systemctl --user daemon-reload
+#   systemctl --user enable --now tune-korrektur
+#   systemctl --user status tune-korrektur        # läuft er?
+[Unit]
+Description=tune: Seiten korrigieren und Training starten (Browser)
+After=network-online.target
+
+[Service]
+# --host: die Tailscale-Adresse dieses Rechners (tailscale ip -4), nie 0.0.0.0 – das Werkzeug hat keine Anmeldung.
+ExecStart=/usr/bin/python3 %h/tune/scripts/ocr_korrektur.py --ordner %h/training --host 100.97.122.72 --port 8765 --ohne-dokumente %h/projektakte/deploy/ocr-test-2/seiten.json
+Restart=on-failure
+RestartSec=10
+# Ein laufendes Training überlebt einen Neustart dieses Dienstes.
+KillMode=process
+
+[Install]
+WantedBy=default.target

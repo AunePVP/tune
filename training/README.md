@@ -75,6 +75,12 @@ python3 training/tune.py trainieren --modell qwen2b --daten ~/projektakte/deploy
 | `glm-ocr` | `zai-org/GLM-OCR` | `glm_ocr` |
 | `qwen4b` | `Qwen/Qwen3.5-4B` (Rückfallebene) | `qwen3_5_nothink` |
 
+**Ohne Anmelden auf dem Spark:** Das Korrekturwerkzeug läuft dort als Dienst und ist über Tailscale im Browser
+erreichbar (`http://100.97.122.72:8765`). Oben rechts führt „Training“ zu einer Seite mit dem Knopf „Exportieren
+und trainieren“: Modell wählen, Knopf drücken. Das Werkzeug exportiert die korrigierten Seiten (Prüfsatz daneben)
+und startet genau den Befehl oben. Die Seite zeigt die Läufe und das Ende des Protokolls und lädt sich neu, solange
+das Training läuft; weiterkorrigieren kannst du währenddessen. Die folgenden Abschnitte erklären, was dabei geschieht.
+
 `--daten` nimmt eine oder mehrere JSONL-Dateien aus `ocr_korrektur.py --export`. Vor dem Start prüft das Werkzeug:
 
 - **Kein Prüfsatz:** Eine `*.pruef.jsonl` wird abgelehnt. Liegt neben `training.jsonl` eine `training.pruef.jsonl`

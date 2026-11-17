@@ -19,7 +19,9 @@ import hashlib
 import html
 import json
 import re
+import subprocess
 import sys
+import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -127,10 +129,91 @@ _STYLE = ("body{font:14px system-ui,sans-serif;margin:0}header{padding:.5rem 1re
           "pre{white-space:pre-wrap;max-height:20rem;overflow:auto;background:#fafafa;padding:.4rem}")
 
 
+MODELS = {"qwen2b": "Qwen3.5-2B", "glm-ocr": "GLM-OCR", "qwen4b": "Qwen3.5-4B (Rückfallebene)"}
+TRAIN_FROM = 200  # corrected pages from which a first training is worthwhile
+
+
 class Tool:
-    def __init__(self, folder: Path):
+    def __init__(self, folder: Path, *, tune_py: Path | None = None, share: float = 0.2,
+                 without: frozenset[str] = frozenset()):
         self.folder = folder
         self.pages = pages_in(folder)
+        # Training from the browser (only where the training tool is installed, i.e. on the Spark): export the
+        # corrected pages and start training/tune.py, so nobody has to log in for it.
+        self.tune_py = tune_py if tune_py and tune_py.is_file() else None
+        self.share, self.without = share, without
+        self.target = folder.resolve().parent / (folder.resolve().name + ".jsonl")
+        self.log = self.target.with_suffix(".training.log")
+        self.job: subprocess.Popen | None = None
+        self.lock = threading.Lock()
+
+    def running(self) -> bool:
+        return self.job is not None and self.job.poll() is None
+
+    def start_training(self, model: str) -> str:
+        """Export the corrected pages (training file and test set) and start a training run in the background."""
+        if not self.tune_py or model not in MODELS:
+            return "Training ist hier nicht eingerichtet."
+        with self.lock:
+            if self.running():
+                return "Es läuft schon ein Training."
+            test_target = self.target.with_name(self.target.stem + ".pruef.jsonl") if self.share > 0 else None
+            counts = export(self.folder, self.target, test_target=test_target, share=self.share, without=self.without)
+            n_train, n_test = sum(counts["training"].values()), sum(counts["pruef"].values())
+            if not n_train:
+                return "Noch keine korrigierten Seiten für das Training."
+            log = self.log.open("w", encoding="utf-8")
+            log.write(f"Export: {n_train} Trainingsseiten nach {self.target}, {n_test} Prüfseiten beiseitegelegt.\n")
+            log.flush()
+            # Its own session: the training goes on even if this tool is stopped.
+            self.job = subprocess.Popen([sys.executable, str(self.tune_py), "trainieren", "--modell", model,
+                                         "--daten", str(self.target)], stdout=log, stderr=subprocess.STDOUT,
+                                        start_new_session=True)
+            return f"Training mit {MODELS[model]} gestartet ({n_train} Seiten)."
+
+    def training_html(self, message: str = "") -> str:
+        by_type = {t: 0 for t in TYPES}
+        for page in self.pages:
+            if state(page) == "korrigiert":
+                by_type[split(_side(page, ".soll.txt").read_text(encoding="utf-8"))[0] or "Text"] += 1
+        done = sum(by_type.values())
+        running = self.running()
+        if running:
+            status = "Ein Training läuft. Diese Seite lädt sich alle 20 Sekunden neu."
+        elif self.job is not None:
+            status = "Das letzte Training ist fertig." if self.job.returncode == 0 else \
+                f"Das letzte Training ist abgebrochen (Code {self.job.returncode}) – siehe Protokoll unten."
+        else:
+            status = "Seit dem Start dieses Werkzeugs wurde kein Training gestartet."
+        hint = (f"Ab rund {TRAIN_FROM} korrigierten Seiten lohnt ein erster Lauf." if done < TRAIN_FROM
+                else "Genug Seiten für einen Lauf.")
+        runs = ""
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            runs = subprocess.run([sys.executable, str(self.tune_py), "laeufe"], capture_output=True, text=True,
+                                  timeout=30).stdout
+        tail = ""
+        if self.log.exists():
+            lines = self.log.read_text(encoding="utf-8", errors="replace").replace("\r", "\n").splitlines()
+            tail = "\n".join(line[:240] for line in lines[-40:] if line.strip())
+        radios = "".join(f"<label><input type='radio' name='modell' value='{k}'{' checked' if k == 'qwen2b' else ''}>"
+                         f" {html.escape(v)}</label>" for k, v in MODELS.items())
+        return (f"<!doctype html><meta charset='utf-8'><title>Training</title>"
+                + ("<meta http-equiv='refresh' content='20;url=/training'>" if running else "")
+                + f"<style>{_STYLE}section{{padding:1rem;max-width:70rem}}</style><header><b>Training</b>"
+                f"<a href='/'>← zurück zum Korrigieren</a></header><section>"
+                + (f"<p><b>{html.escape(message)}</b></p>" if message else "")
+                + f"<p>{done} von {len(self.pages)} Seiten korrigiert: "
+                + ", ".join(f"{t} {n}" for t, n in by_type.items()) + f". {hint}</p>"
+                f"<form method='post' action='/training'><div class='typ'>Modell: {radios}</div>"
+                f"<button{' disabled' if running else ''}>Exportieren und trainieren</button></form>"
+                f"<p>Der Knopf schreibt die korrigierten Seiten nach <code>{html.escape(str(self.target))}</code> "
+                f"(Prüfsatz daneben, wird nie trainiert) und startet einen neuen nummerierten Lauf. Weiter "
+                f"korrigieren geht währenddessen. Es läuft immer nur ein Training.</p><p>{status}</p>"
+                f"<h3>Läufe</h3><pre>{html.escape(runs or '–')}</pre>"
+                f"<h3>Protokoll (Ende)</h3><pre>{html.escape(tail or '–')}</pre></section>")
+
+    def _training_link(self) -> str:
+        return "<a href='/training'>Training</a>" if self.tune_py else ""
 
     def next_open(self, after: int = -1) -> int:
         n = len(self.pages)
@@ -152,7 +235,7 @@ class Tool:
                 f"<style>{_STYLE}</style><header><b>{done} von {len(self.pages)} korrigiert</b>"
                 f"<span>Seite {i + 1}: {html.escape(page.name)} – <span class='{state(page)}'>{state(page)}</span></span>"
                 f"<a href='/seite/{max(0, i - 1)}'>← zurück</a><a href='/seite/{min(len(self.pages) - 1, i + 1)}'>"
-                f"weiter →</a><a href='/'>nächste offene</a></header><main><div><img src='/bild/{i}' alt=''></div>"
+                f"weiter →</a><a href='/'>nächste offene</a>{self._training_link()}</header><main><div><img src='/bild/{i}' alt=''></div>"
                 f"<form method='post' action='/seite/{i}'><div class='typ'>Typ: {radios}</div>"
                 f"<textarea name='text' autofocus>{html.escape(text)}</textarea><div>"
                 f"<button name='aktion' value='speichern'>Speichern &amp; weiter (Strg+Enter)</button>"
@@ -192,6 +275,8 @@ def handler(tool: Tool):
             parts = self.path.split("?")[0].strip("/").split("/")
             if parts == [""]:
                 return self._go(tool.next_open())
+            if parts == ["training"] and tool.tune_py:
+                return self._send(200, tool.training_html().encode("utf-8"))
             if len(parts) == 2 and (i := self._index(parts[1])) is not None:
                 if parts[0] == "seite":
                     return self._send(200, tool.page_html(i).encode("utf-8"))
@@ -202,6 +287,10 @@ def handler(tool: Tool):
 
         def do_POST(self):  # noqa: N802
             parts = self.path.strip("/").split("/")
+            if parts == ["training"] and tool.tune_py:
+                form = urllib.parse.parse_qs(self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode())
+                message = tool.start_training((form.get("modell") or [""])[0])
+                return self._send(200, tool.training_html(message).encode("utf-8"))
             if len(parts) != 2 or parts[0] != "seite" or (i := self._index(parts[1])) is None:
                 return self._send(404, b"nicht gefunden")
             form = urllib.parse.parse_qs(self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode("utf-8"),
@@ -219,6 +308,10 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Trainingsseiten im Browser korrigieren")
     ap.add_argument("--ordner", required=True)
     ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--host", default="127.0.0.1",
+                    help="Adresse, unter der das Werkzeug erreichbar ist (Voreinstellung nur dieser Rechner). Für den "
+                         "Zugriff über Tailscale die Tailscale-Adresse des Rechners angeben, nie 0.0.0.0: Das "
+                         "Werkzeug hat keine Anmeldung")
     ap.add_argument("--export", help="korrigierte Seiten als Trainingsdaten (JSONL) in diese Datei schreiben")
     ap.add_argument("--pruef-anteil", type=float, default=0.2,
                     help="Anteil der Dokumente, die als Prüfsatz beiseitegelegt und nie trainiert werden (0.2). Die "
@@ -252,11 +345,14 @@ def main(argv: list[str] | None = None) -> int:
         if not documents(folder):
             print("Hinweis: keine seiten.json im Ordner – das Dokument wurde aus dem Dateinamen abgeleitet.")
         return 0
-    tool = Tool(folder)
+    without = frozenset(documents(Path(args.ohne_dokumente)).values()) if args.ohne_dokumente else frozenset()
+    tool = Tool(folder, tune_py=Path(__file__).resolve().parents[1] / "training" / "tune.py",
+                share=args.pruef_anteil, without=without)
     if not tool.pages:
         raise SystemExit(f"Keine Seitenbilder in {folder}")
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), handler(tool))
-    print(f"{len(tool.pages)} Seiten – im Browser öffnen: http://127.0.0.1:{args.port}  (beenden mit Strg+C)")
+    server = ThreadingHTTPServer((args.host, args.port), handler(tool))
+    print(f"{len(tool.pages)} Seiten – im Browser öffnen: http://{args.host}:{args.port}  (beenden mit Strg+C)",
+          flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
