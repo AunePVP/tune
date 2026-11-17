@@ -2,7 +2,7 @@
 
 Ein feingetunter Seitenleser für die Bildauswertung von **Projektakte**: Er liest gescannte Seiten aus Projektakten
 eines Brandschutz-Ingenieurbüros nach einer festen Vorgabe – Seitentyp in der ersten Zeile (`TYP: Text|Plan|Foto|Leer`),
-bei Text die vollständige Abschrift, bei Plänen nur Schriftfeld und Legende, bei Fotos nur sichtbaren Text, bei Leerem
+bei Text die vollständige Abschrift, bei Plänen Schriftfeld, Legende und Hinweistexte, bei Fotos nur sichtbaren Text, bei Leerem
 nichts. Nichts erfinden, nichts beschreiben.
 
 Alles Weitere – Problem, Vorgabe, Messungen, Entscheidungen, Ablauf, Befehle, nächste Schritte, Regeln – steht in
