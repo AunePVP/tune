@@ -17,15 +17,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ocr_vergleich import MIME, ask, looped, pages_in, parse_model  # noqa: E402
-from ocr_vorgabe import PROMPT, join, split  # noqa: E402
+from ocr_vorgabe import ANWEISUNG, PROMPT, join, split  # noqa: E402
 
 
-def draft(folder: Path, model: dict, *, parallel: int, max_tokens: int, timeout: float, extra: dict | None) -> dict:
+def draft(folder: Path, model: dict, *, parallel: int, max_tokens: int, timeout: float, extra: dict | None,
+          prompt: str = PROMPT) -> dict:
     todo = [p for p in pages_in(folder) if not p.with_name(p.stem + ".entwurf.txt").exists()]
     stats = {"seiten": len(todo), "fehler": 0, "ohne_typ": 0, "schleife": 0, "meldungen": {}}
 
     def one(page: Path) -> None:
-        res = ask(model["url"], model["model"], PROMPT, page.read_bytes(), MIME[page.suffix.lower()], max_tokens,
+        res = ask(model["url"], model["model"], prompt, page.read_bytes(), MIME[page.suffix.lower()], max_tokens,
                   timeout, extra)
         if res["error"]:
             stats["fehler"] += 1
@@ -58,10 +59,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-tokens", type=int, default=4000)
     ap.add_argument("--timeout", type=float, default=600)
     ap.add_argument("--extra-body", default="", help="weitere Felder als JSON, z. B. Denken ausschalten")
+    ap.add_argument("--trainiert", action="store_true",
+                    help="das Modell ist ein feingetunter Seitenleser: so fragen wie im Training (nur das Bild)")
     args = ap.parse_args(argv)
     extra = json.loads(args.extra_body) if args.extra_body.strip() else None
     stats = draft(Path(args.ordner), parse_model(args.modell), parallel=args.parallel, max_tokens=args.max_tokens,
-                  timeout=args.timeout, extra=extra)
+                  timeout=args.timeout, extra=extra, prompt=ANWEISUNG if args.trainiert else PROMPT)
     print(f"{stats['seiten']} Entwürfe – {stats['fehler']} Fehler (beim nächsten Aufruf erneut), "
           f"{stats['ohne_typ']} ohne Typzeile (als Text angenommen), {stats['schleife']} Schleifen/abgeschnitten (leer "
           f"gelassen)")

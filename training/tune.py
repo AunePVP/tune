@@ -34,7 +34,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "scripts"))
-from ocr_vorgabe import PROMPT, TYPES, split  # noqa: E402
+from ocr_vorgabe import ANWEISUNG, PROMPT, TYPES, split  # noqa: E402
 
 # Base models. "bedarf_gb": memory a training needs at A4 size with some reserve (measured 17.11.2026 with short
 # answers: qwen2b 15 GB, glm-ocr 6 GB; qwen4b is a guess). It feeds the check against the free memory before a run.
@@ -46,7 +46,10 @@ MODELLE = {
 FASSUNGEN = ("bf16", "fp8", "nvfp4")
 A4_PIXEL = 1536 * 1536  # 2.36 MP: an A4 page at 150 dpi (1240 x 1754 = 2.18 MP) passes unscaled
 VLLM_IMAGE = "vllm/vllm-openai:latest"
-PROMPT_SHA = hashlib.sha256(PROMPT.encode("utf-8")).hexdigest()
+# The model is asked with ANWEISUNG (nothing but the image); PROMPT is the written form of the rules the target texts
+# follow. Both are recorded with every run.
+ANWEISUNG_SHA = hashlib.sha256(ANWEISUNG.encode("utf-8")).hexdigest()
+REGELN_SHA = hashlib.sha256(PROMPT.encode("utf-8")).hexdigest()
 
 # One sentence per setting; written as comments into each run's einstellungen.yaml and explained in the README.
 ERKLAERUNG = {
@@ -147,9 +150,9 @@ def lies_jsonl(datei: Path) -> list[dict]:
                 raise Fehler(f"{wo}: nicht im Format des Exports (messages + images).") from None
             if frage.get("role") != "user" or antwort.get("role") != "assistant" or len(bilder) != 1:
                 raise Fehler(f"{wo}: erwartet werden eine Frage, eine Antwort und genau ein Bild.")
-            if frage.get("content") != "<image>" + PROMPT:
-                raise Fehler(f"{wo}: Die Anweisung ist nicht die aktuelle Fassung von PROMPT (scripts/ocr_vorgabe.py). "
-                             "Soll-Texte an die Vorgabe anpassen und neu exportieren.")
+            if frage.get("content") != "<image>" + ANWEISUNG:
+                raise Fehler(f"{wo}: Die Anfrage ist nicht die aktuelle Fassung von ANWEISUNG (scripts/ocr_vorgabe.py: "
+                             "nur das Bild). Die Datei stammt aus einem älteren Export – neu exportieren.")
             if split(antwort.get("content") or "")[0] is None:
                 raise Fehler(f"{wo}: Die Antwort beginnt nicht mit einer Typzeile (TYP: …).")
             zeilen.append({"messages": [frage, antwort], "images": [str(bilder[0])]})
@@ -509,9 +512,13 @@ def cmd_trainieren(args) -> int:
         e = lies_lauf(eltern)
         if e["modell"] != modell:
             raise Fehler(f"Lauf {eltern.name} wurde mit {e['modell']} trainiert, nicht mit {modell}.")
-        if e["prompt_sha256"] != PROMPT_SHA:
-            raise Fehler("PROMPT hat sich seit dem früheren Lauf geändert. Dann nicht weitertrainieren, sondern alle "
-                         "Soll-Texte anpassen und neu trainieren (ohne --weiter-von).")
+        if e.get("anweisung_sha256") != ANWEISUNG_SHA:
+            raise Fehler("ANWEISUNG hat sich seit dem früheren Lauf geändert. Dann nicht weitertrainieren, sondern "
+                         "neu trainieren (ohne --weiter-von).")
+        if e.get("regeln_sha256") != REGELN_SHA and not args.regeln_geaendert:
+            raise Fehler("Die Regeln (PROMPT) haben sich seit dem früheren Lauf geändert. Sind alle Soll-Texte an die "
+                         "neuen Regeln angepasst, besser neu trainieren; war die Änderung nur eine Klarstellung, "
+                         "mit --regeln-geaendert weitertrainieren.")
         if e.get("status") != "fertig" or not (eltern / "adapter" / "adapter_config.json").is_file():
             raise Fehler(f"Lauf {eltern.name} hat keinen fertigen Adapter.")
         namen, doks = pruef_bilder([Path(p) for p in hinweise["pruefsaetze"]])
@@ -545,7 +552,7 @@ def cmd_trainieren(args) -> int:
         "lauf": ordner.name, "modell": modell, "grundmodell": MODELLE[modell]["hf"],
         "weg": "weiter" if weiter else "neu", "weiter_von": eltern.name if weiter else None,
         "begonnen": datetime.datetime.now().isoformat(timespec="seconds"), "status": "läuft",
-        "prompt_sha256": PROMPT_SHA,
+        "anweisung_sha256": ANWEISUNG_SHA, "regeln_sha256": REGELN_SHA,
         "daten": [{"datei": str(Path(d).expanduser().resolve()), "sha256": sha256_datei(Path(d).expanduser())}
                   for d in args.daten],
         "pruefsaetze_ausgeschlossen": hinweise["pruefsaetze"],
@@ -564,7 +571,7 @@ def cmd_trainieren(args) -> int:
     if bilder["groesser_als_bildgroesse"]:
         print(f"  Hinweis: {bilder['groesser_als_bildgroesse']} Seiten sind größer als die Bildgröße "
               f"({args.bild_pixel / 1e6:.2f} MP, größte {bilder['groesste_mp']} MP) und werden verkleinert.")
-    lang = sum(len(r["messages"][1]["content"]) / 2 > args.laenge - args.bild_pixel / 784 - 700 for r in train)
+    lang = sum(len(r["messages"][1]["content"]) / 2 > args.laenge - args.bild_pixel / 784 - 100 for r in train)
     if lang:
         print(f"  Hinweis: Bei rund {lang} Seiten könnte die Antwort die Länge {args.laenge} sprengen und würde "
               "abgeschnitten (--laenge erhöhen).")
@@ -768,14 +775,14 @@ def cmd_stoppen(args) -> int:
 
 
 def frage(url: str, modell: str, bild: Path, *, max_tokens: int = 4096, timeout: float = 600) -> dict:
-    """Ask a served model to read one page with PROMPT; returns the raw chat-completions response."""
+    """Ask a served model to read one page as in training (ANWEISUNG: the image only); returns the raw response."""
     mime = "image/png" if bild.suffix.lower() == ".png" else "image/jpeg"
     daten = base64.b64encode(bild.read_bytes()).decode("ascii")
     body = {"model": modell, "temperature": 0, "max_tokens": max_tokens,
             "chat_template_kwargs": {"enable_thinking": False},
             "messages": [{"role": "user", "content": [
                 {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{daten}"}},
-                {"type": "text", "text": PROMPT}]}]}
+                *([{"type": "text", "text": ANWEISUNG}] if ANWEISUNG else [])]}]}
     req = urllib.request.Request(url.rstrip("/") + "/chat/completions", data=json.dumps(body).encode("utf-8"),
                                  headers={"Content-Type": "application/json"})
     try:
@@ -853,6 +860,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--schritte", type=int, help="nach so vielen Lernschritten aufhören (nur für Funktionstests)")
     p.add_argument("--name", help="Zusatz zum Namen des Laufordners")
     p.add_argument("--trotzdem", action="store_true", help="auch bei knappem Speicher starten")
+    p.add_argument("--regeln-geaendert", action="store_true", help="weitertrainieren, obwohl PROMPT (die Regeln) seit "
+                   "dem früheren Lauf geändert wurde")
     p.set_defaults(func=cmd_trainieren)
 
     p = sub.add_parser("laeufe", help="Übersicht aller Läufe")
@@ -882,7 +891,7 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--trotzdem", action="store_true", help="auch bei knappem Speicher starten")
         p.set_defaults(func=cmd_starten if name == "starten" else cmd_stoppen)
 
-    p = sub.add_parser("fragen", help="eine Seite an ein laufendes Modell schicken (mit PROMPT)")
+    p = sub.add_parser("fragen", help="eine Seite an ein laufendes Modell schicken (wie im Training: nur das Bild)")
     p.add_argument("--bild", required=True)
     p.add_argument("--lauf")
     p.add_argument("--fassung", choices=FASSUNGEN, default="bf16")

@@ -100,7 +100,7 @@ def test_the_correction_tool_saves_discards_and_exports(tmp_path):
     counts = ocr_korrektur.export(tmp_path, tmp_path / "training.jsonl")
     lines = [json.loads(x) for x in (tmp_path / "training.jsonl").read_text(encoding="utf-8").splitlines()]
     assert counts["training"] == {"Text": 0, "Plan": 1, "Foto": 0, "Leer": 1} and len(lines) == 2
-    assert lines[0]["messages"][0]["content"] == "<image>" + ocr_vorgabe.PROMPT
+    assert lines[0]["messages"][0]["content"] == "<image>" + ocr_vorgabe.ANWEISUNG == "<image>"
     assert lines[0]["messages"][1]["content"] == "TYP: Plan\nGrundriss EG\nIndex C"
     assert lines[0]["images"][0].endswith("000_Beispiel_S1.png")
 

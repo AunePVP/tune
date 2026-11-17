@@ -5,7 +5,7 @@ stay in full precision.
 
   fp8    weights and activations in 8-bit floating point, activation scales found at run time: needs no data.
   nvfp4  weights and activations in NVIDIA's 4-bit floating point: the activation scales are calibrated on pages,
-         here on training pages of the run (image + PROMPT), wrapped as in operation.
+         here on training pages of the run (the image only, as in training), wrapped as in operation.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "scripts"))
-from ocr_vorgabe import PROMPT  # noqa: E402
+from ocr_vorgabe import ANWEISUNG  # noqa: E402
 
 # Kept in full precision: output layer, vision tower and the bridge between vision and language part.
 AUSGENOMMEN = ["re:.*lm_head", "re:.*visual.*", "re:.*vision.*", "re:.*embed_tokens$"]
@@ -35,7 +35,7 @@ def kalibrierdaten(datei: Path, processor, vorlage: str | None, max_pixel: int, 
                 zeilen.append(json.loads(zeile)["images"][0])
             if len(zeilen) >= anzahl:
                 break
-    anfrage = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": PROMPT}]}]
+    anfrage = [{"role": "user", "content": [{"type": "image"}, *([{"type": "text", "text": ANWEISUNG}] if ANWEISUNG else [])]}]
     kwargs = {"chat_template": vorlage} if vorlage else {}
     text = processor.apply_chat_template(anfrage, add_generation_prompt=True, tokenize=False, **kwargs)
 

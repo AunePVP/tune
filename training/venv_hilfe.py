@@ -11,7 +11,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "scripts"))
-from ocr_vorgabe import PROMPT  # noqa: E402
+from ocr_vorgabe import ANWEISUNG  # noqa: E402
 
 
 def zusammengefasst(ids: list[int], bild_token: int) -> list[int]:
@@ -43,14 +43,14 @@ def pruefe_modell(kurz: str, hf: str, vorlage: str, trust: bool, ordner: str, la
     template = get_template_and_fix_tokenizer(tokenizer, data_args)
 
     # What training feeds the model for one page ...
-    messages = [{"role": "user", "content": "<image>" + PROMPT}, {"role": "assistant", "content": "TYP: Leer"}]
+    messages = [{"role": "user", "content": "<image>" + ANWEISUNG}, {"role": "assistant", "content": "TYP: Leer"}]
     bild = Image.new("RGB", (64, 64), "white")
     messages = template.mm_plugin.process_messages(messages, [bild], [], [], processor)
     prompt_ids, antwort_ids = template.encode_oneturn(tokenizer, messages)
     bild_token = tokenizer.convert_tokens_to_ids(template.mm_plugin.image_token)
     # ... and what the operation template makes of the same request.
     jinja = (HERE / "vorlagen" / f"{vorlage}.jinja").read_text(encoding="utf-8")
-    anfrage = [{"role": "user", "content": [{"type": "text", "text": PROMPT}, {"type": "image"}]}]
+    anfrage = [{"role": "user", "content": [*([{"type": "text", "text": ANWEISUNG}] if ANWEISUNG else []), {"type": "image"}]}]
     text = tokenizer.apply_chat_template(anfrage, chat_template=jinja, add_generation_prompt=True, tokenize=False)
     betrieb_ids = tokenizer(text, add_special_tokens=False)["input_ids"]
     # The request in operation must be the exact beginning of what training showed the model (some templates count

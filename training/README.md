@@ -86,7 +86,9 @@ das Training läuft; weiterkorrigieren kannst du währenddessen. Die folgenden A
 - **Kein Prüfsatz:** Eine `*.pruef.jsonl` wird abgelehnt. Liegt neben `training.jsonl` eine `training.pruef.jsonl`
   (so schreibt sie der Export), darf keine Trainingsseite aus einem ihrer Dokumente stammen. Weitere Prüfsätze nennt
   `--pruefsatz` (z. B. den der 49 alten Prüfseiten).
-- **Aktuelle Vorgabe:** Jede Zeile muss die aktuelle Fassung von `PROMPT` tragen und mit einer Typzeile beginnen.
+- **Aktuelle Anfrage:** Das feingetunte Modell wird **ohne Anweisung** gefragt, es bekommt nur das Seitenbild
+  (`ANWEISUNG` in `scripts/ocr_vorgabe.py` ist leer). Jede Zeile muss genau so aussehen und mit einer Typzeile
+  antworten; ältere Exporte mit der langen Anweisung werden abgelehnt.
 - **Bilder da:** Jedes Seitenbild muss unter dem Pfad aus der JSONL liegen (beim Export: `--bild-basis`).
 - **Speicher:** Ist weniger frei als nötig, startet der Lauf nicht (siehe „Zu wenig Speicher“).
 
@@ -97,7 +99,7 @@ Dann legt es den Lauf an, startet LLaMA-Factory und zeigt dessen Ausgabe. Abbrec
 ```
 ~/tune-training/laeufe/001-qwen2b/
   einstellungen.yaml   alle Einstellungen, jede mit einem Satz erklärt (genau diese Datei bekommt LLaMA-Factory)
-  lauf.json            Datenstand: welche JSONL (mit Prüfsumme), Seiten je Typ, Prüfsumme von PROMPT, Verlust, Status
+  lauf.json            Datenstand: welche JSONL (mit Prüfsumme), Seiten je Typ, Prüfsummen von ANWEISUNG und PROMPT, Verlust, Status
   daten/               die Seiten dieses Laufs: training.jsonl, validierung.jsonl (echte Texte – bleiben auf dem Spark)
   adapter/             der Adapter, je Epoche ein Checkpoint, training_loss.png, trainer_log.jsonl
   protokoll.log        die ganze Ausgabe
@@ -136,8 +138,8 @@ mit langen Antworten brauchen mehr von beidem):
 | `glm-ocr` | rund 6 GB | rund 2,5 s | eine halbe Stunde |
 | `qwen4b` | nicht gemessen (Schätzung 30 GB) | – | – |
 
-Eine A4-Seite ergibt bei Qwen rund 2.100 Bild-Tokens, bei GLM-OCR rund 2.800; die Anweisung kommt mit rund 650
-Tokens dazu.
+Eine A4-Seite ergibt bei Qwen rund 2.100 Bild-Tokens, bei GLM-OCR rund 2.800. Eine Anweisung kommt nicht dazu
+(gemessen wurde noch mit der langen Anweisung von rund 650 Tokens).
 
 **Bildgröße:** Sie muss im Training und im Betrieb gleich sein, sonst sieht das Modell im Betrieb andere Bilder,
 als es gelernt hat. Der Startbefehl für vLLM übernimmt sie deshalb aus dem Lauf. Seiten über der Grenze (A3, große
@@ -183,7 +185,7 @@ früheren Lauf bei (`--alt-anteil 0.5`: die Hälfte der Trainingsseiten sind alt
 kleiner (halbe Lernrate, 2 Epochen). Die Validierungsseiten des früheren Laufs bleiben Validierungsseiten. Der neue
 Lauf bekommt eine eigene Nummer, der alte bleibt unverändert. Der Rang ist der des früheren Laufs.
 
-Abgelehnt wird das Weitertrainieren, wenn das Modell ein anderes ist oder sich `PROMPT` seit dem früheren Lauf
+Abgelehnt wird das Weitertrainieren, wenn das Modell ein anderes ist oder sich `ANWEISUNG` oder die Regeln (`PROMPT`) seit dem früheren Lauf
 geändert hat. Dann: alle Soll-Texte anpassen und neu trainieren.
 
 Für alle Läufe gilt **derselbe Prüfsatz** (er darf wachsen), sonst sind sie nicht vergleichbar.

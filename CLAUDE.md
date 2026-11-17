@@ -89,10 +89,16 @@ gedrehte Seiten und Doppelseiten werden in normaler Lesereihenfolge gelesen (lin
 nichts). Wozu: Die Suche kann nach Typ filtern, Projektakte erkennt Fehleinordnungen, `TYP: Leer` heißt sicher
 „bewusst nichts“ und nicht „etwas ging schief“.
 
-Die Anweisung an das Modell steht **wörtlich und nur einmal** in `scripts/ocr_vorgabe.py` (`PROMPT`, `TYPES`, `split`,
-`join`). Entwürfe, Korrektur, Training, Prüfung und später der Betrieb in Projektakte nutzen genau diese Fassung. Wer sie
-ändert, ändert die Vorgabe für alles. Dann müssen Trainingsdaten und Prüfung dazu passen, und Projektakte muss sie beim
-Einbau übernehmen.
+**Regeln und Anfrage stehen nur einmal** in `scripts/ocr_vorgabe.py`:
+- `PROMPT`: die Regeln dieses Abschnitts als Anweisung in Worten. Damit werden **untrainierte** Modelle gefragt
+  (Entwürfe, Vergleich mit `--vorgabe`), und das Korrekturwerkzeug zeigt sie unter „Regeln“.
+- `ANWEISUNG`: womit das **feingetunte** Modell im Training und im Betrieb gefragt wird. Sie ist **leer**: Das Modell
+  bekommt nur das Seitenbild (Entscheidung des Nutzers, 17.11.2026, Abschnitt 5). Export, Training, Prüfung und
+  später Projektakte nutzen genau diese Fassung.
+- `TYPES`, `split`, `join`: die Antwortform.
+
+Wer `PROMPT` ändert, ändert die Regeln: Soll-Texte müssen dazu passen. Wer `ANWEISUNG` ändert, muss neu trainieren,
+und Projektakte muss sie übernehmen.
 
 ## 4. Was gemessen ist
 
@@ -128,6 +134,11 @@ Weitere Erkenntnisse:
 - **Ein kleines Modell, kein größeres ohne Training** (Entscheidung des Nutzers, nicht erneut aufrollen): Der
   Seitenleser muss schnell sein. Das große Frage-Modell auf dem Spark steht zur Verfügung, wird aus Tempogründen aber
   nicht für die Bildauswertung genutzt. Kleine Modelle halten die Vorgabe ohne Training nicht ein.
+- **Das feingetunte Modell wird ohne Anweisung gefragt** (Entscheidung des Nutzers, 17.11.2026): Es hat nur diese
+  eine Aufgabe und bekommt nur das Seitenbild (`ANWEISUNG = ""` in `ocr_vorgabe.py`). Die Regeln lernt es allein aus
+  den korrigierten Seiten. Hinweis der KI dazu: Das spart rund 650 Eingabe-Tokens je Seite, bringt wenig Tempo (die
+  Zeit kostet das Schreiben der Antwort) und braucht eher mehr Trainingsseiten; ob es reicht, zeigt die Messung am
+  Prüfsatz. Der Weg zurück ist eine Zeile (`ANWEISUNG = PROMPT`), dann neu exportieren und neu trainieren.
 - **Devise: einmal richtig machen.** Sorgfalt bei Vorgabe, Trainingsdaten und Prüfung geht vor Tempo im Projekt.
 - **Der Nutzer trainiert selbst und will es verstehen.** Die KI baut dafür ein Trainingswerkzeug mit Anleitung
   (was jeder Schritt und jede Einstellung bewirkt), keine Blackbox, und startet selbst kein echtes Training.
@@ -164,12 +175,13 @@ Weitere Erkenntnisse:
 
   Was dafür gilt:
   - **Jeden Lauf aufbewahren:** Adapter (nicht nur das zusammengeführte Modell), Checkpoints, Einstellungen und
-    Datenstand (welche JSONL, Seitenzahl, Fassung von `PROMPT`), je Lauf ein nummerierter Ordner.
+    Datenstand (welche JSONL, Seitenzahl, Fassung von `ANWEISUNG` und `PROMPT`), je Lauf ein nummerierter Ordner.
   - **Neue Seiten:** weiterer Export aus Projektakte in einen eigenen Ordner (`training-2`, mit `--ohne-seiten` der
     bisherigen), Entwürfe, Korrektur, Export. Die JSONL-Dateien werden aneinandergehängt. Der Hash je Dokument hält
     die Aufteilung in Training und Prüfsatz über alle Ordner gleich.
   - **Derselbe Prüfsatz** für alle Läufe (er darf wachsen), sonst sind sie nicht vergleichbar.
-  - **Ändert sich `PROMPT`:** alle Soll-Texte anpassen und neu trainieren, nicht weitertrainieren.
+  - **Ändern sich die Regeln (`PROMPT`):** alle Soll-Texte anpassen und neu trainieren, nicht weitertrainieren
+    (nach einer bloßen Klarstellung: `--regeln-geaendert`). Ändert sich `ANWEISUNG`: immer neu trainieren.
 
 ## 6. Offen
 
@@ -201,7 +213,7 @@ Weitere Erkenntnisse:
 |---|---|---|---|
 | 1. Prüfseiten exportieren | Projektakte: `python -m projektakte.ocr_testseiten --anzahl 50 --ziel /data/ocr-test-2` | Spark | erledigt (49 Seiten) |
 | 2. Trainingsseiten exportieren | Projektakte: `python -m projektakte.ocr_testseiten --training --anzahl 600 --ziel /data/training --ohne-seiten /data/ocr-test-2/seiten.json` | Spark | gebaut |
-| 3. Modelle vergleichen | `scripts/ocr_vergleich.py` (mit `--vorgabe`: `PROMPT` und Auswertung der Typzeile) | PC oder Spark | gebaut |
+| 3. Modelle vergleichen | `scripts/ocr_vergleich.py` (mit `--vorgabe`: `PROMPT` und Auswertung der Typzeile; mit `--trainiert`: feingetunte Modelle, nur das Bild) | PC oder Spark | gebaut |
 | 4. Entwürfe schreiben lassen | `scripts/ocr_entwurf.py` | Spark (Qwen) | gebaut |
 | 5. Korrigieren | `scripts/ocr_korrektur.py` (Browser, 127.0.0.1:8765) | PC | gebaut |
 | 6. Trainingsdaten und Prüfsatz ausgeben | `scripts/ocr_korrektur.py --export training.jsonl` (schreibt auch `training.pruef.jsonl`) | PC | gebaut |
@@ -249,7 +261,7 @@ Trainingsdaten und Prüfsatz ausgeben:
 python scripts\ocr_korrektur.py --ordner training --export training.jsonl --bild-basis /home/md/training
 ```
 Das schreibt `training.jsonl` und `training.pruef.jsonl`. Eine Zeile je Seite:
-`{"messages":[{"role":"user","content":"<image>…PROMPT…"},{"role":"assistant","content":"TYP: …"}],"images":["<Pfad>"]}`.
+`{"messages":[{"role":"user","content":"<image>"},{"role":"assistant","content":"TYP: …"}],"images":["<Pfad>"]}`.
 Das ist das Format, das LLaMA-Factory und ms-swift lesen.
 - **Aufteilung:** Ganze Dokumente (Feld `dokument` der `seiten.json`) gehen in den Prüfsatz, Voreinstellung 20 %
   (`--pruef-anteil 0.2`). Entschieden wird über einen festen Hash des Dokumentnamens: Die Aufteilung ist bei jedem
@@ -302,17 +314,18 @@ python3 training/tune.py fragen --lauf 1 --fassung fp8 --bild <Seite>
 
 **Was das Werkzeug festlegt:**
 - Je Lauf ein nummerierter Ordner `~/tune-training/laeufe/NNN-<modell>` mit `einstellungen.yaml`, `lauf.json`
-  (JSONL mit Prüfsumme, Seiten je Typ, Prüfsumme von `PROMPT`, Verlust), `daten/`, `adapter/` (Checkpoint je Epoche,
+  (JSONL mit Prüfsumme, Seiten je Typ, Prüfsummen von `ANWEISUNG` und `PROMPT`, Verlust), `daten/`, `adapter/` (Checkpoint je Epoche,
   Verlustkurve), `protokoll.log`, später `modell-bf16`, `modell-fp8`, `modell-nvfp4`. Nummern werden nie
   wiederverwendet.
 - Abgelehnt werden: `*.pruef.jsonl`; Seiten oder Dokumente, die in der `*.pruef.jsonl` neben der Datendatei oder in
-  einem mit `--pruefsatz` genannten Prüfsatz vorkommen; Zeilen mit einer anderen Fassung von `PROMPT` oder ohne
+  einem mit `--pruefsatz` genannten Prüfsatz vorkommen; Zeilen mit einer anderen Anfrage als `ANWEISUNG` oder ohne
   Typzeile; fehlende Bilder; ein Start bei zu wenig freiem Speicher (außer mit `--trotzdem`).
 - Validierung: 10 % der Dokumente der Trainingsdaten (fester Hash je Dokument mit eigenem Salz, unabhängig vom
   Prüfsatz). Das Dokument wird aus dem Bildnamen abgeleitet (`NNN_<Datei>_S<Seite>`), weil die JSONL kein Feld
   `dokument` hat.
 - Weitertrainieren: Adapter des früheren Laufs, halbe Lernrate (5e-5), 2 Epochen, alte Trainingsseiten beigemischt
-  (`--alt-anteil 0.5`); abgelehnt bei anderem Modell oder geändertem `PROMPT`.
+  (`--alt-anteil 0.5`); abgelehnt bei anderem Modell, geänderter `ANWEISUNG` oder geänderten Regeln (`PROMPT`, außer mit
+  `--regeln-geaendert`).
 - Voreinstellungen wie in der offiziellen GLM-OCR-Anleitung: Rang 8, Lernrate 1e-4, 3 Epochen, BF16, LoRA auf allen
   Schichten des Sprachteils, Bildteil und Brücke eingefroren; Stapel 1 × Sammeln 8; Länge 8.192 Tokens.
 - **Bildgröße:** `image_max_pixels` 2.359.296 (1536², A4 mit 150 dpi bleibt unverkleinert). Größere Seiten werden
@@ -379,7 +392,7 @@ Die quantisierte Fassung des besseren Kandidaten gegen das Abnahmekriterium (Abs
 
 Fertiges Modell, Startbefehl auf dem Spark mit begrenztem Speicher (das Modell läuft neben dem großen Frage-Modell
 und dem Embedding-Dienst, eher 8–12 GB), Beschreibung für den Einbau. Der Einbau selbst geschieht im Repository
-`projektakte`: eigene Einstellungen `VISION_URL`/`VISION_MODEL`, `PROMPT` aus `ocr_vorgabe.py`, `TYP:` auswerten und
+`projektakte`: eigene Einstellungen `VISION_URL`/`VISION_MODEL`, Anfrage wie `ANWEISUNG` in `ocr_vorgabe.py` (nur das Bild, kein Text), `TYP:` auswerten und
 speichern, wiederkehrende Kopf- und Fußzeilen je Dokument entfernen, Schleifenerkennung beibehalten, Antworten ohne
 Typzeile oder mit Inhalt bei `TYP: Leer` als Fehler behandeln.
 
@@ -429,9 +442,9 @@ Typzeile oder mit Inhalt bei `TYP: Leer` als Fehler behandeln.
 
 | Datei | Zweck |
 |---|---|
-| `scripts/ocr_vorgabe.py` | die Vorgabe: `PROMPT`, `TYPES`, `split`/`join` der Antwortform |
+| `scripts/ocr_vorgabe.py` | die Vorgabe: `PROMPT` (Regeln, für untrainierte Modelle), `ANWEISUNG` (Anfrage an das feingetunte Modell: leer), `TYPES`, `split`/`join` der Antwortform |
 | `scripts/ocr_vergleich.py` | Modelle auf einem Seitenordner vergleichen (OpenAI-kompatible Server; Tempo, Tokens, Schleifen; HTML nebeneinander; `--extra-body`; `--vorgabe` für `PROMPT` und Typzeile) |
-| `scripts/ocr_entwurf.py` | Entwürfe nach der Vorgabe erzeugen (`<Seite>.entwurf.txt`, fortsetzbar) |
+| `scripts/ocr_entwurf.py` | Entwürfe nach der Vorgabe erzeugen (`<Seite>.entwurf.txt`, fortsetzbar); `--trainiert`, wenn ein feingetuntes Modell die Entwürfe schreibt |
 | `scripts/ocr_korrektur.py` | Korrigieren im Browser (`<Seite>.soll.txt`), Export als JSONL, getrennt in Training und Prüfsatz nach Dokument (`--pruef-anteil`, `--ohne-dokumente`, `--bild-basis`); `--host` für den Zugriff über Tailscale; Seite „Training“ (Export und Start von `training/tune.py`), wenn `training/` daneben liegt |
 | `training/tune-korrektur.service` | Vorlage: Korrekturwerkzeug als Dienst auf dem Spark |
 | `training/README.md` | Anleitung zum Training: jeder Schritt, jede Einstellung, „war der Lauf gut?“, „zu wenig Speicher“ |

@@ -32,6 +32,12 @@ PROMPT = (
     "nichts, beschreibe nichts, fasse nichts zusammen."
 )
 
+# What the FINE-TUNED model is asked in training and in operation: nothing but the page image (decision of the user,
+# 17.11.2026). The model has this one task and learns the rules from the corrected pages; PROMPT above stays the
+# written form of the rules – for drafts by untrained models, for the person correcting, and as documentation.
+# Whoever changes ANWEISUNG must train anew and tell Projektakte.
+ANWEISUNG = ""
+
 
 def split(answer: str) -> tuple[str | None, str]:
     """(type, text) of an answer in the target form; type None if the first line names none of TYPES."""

@@ -15,7 +15,7 @@ from conftest import png
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "training"))
 import tune  # noqa: E402
-from ocr_vorgabe import PROMPT  # noqa: E402
+from ocr_vorgabe import ANWEISUNG, PROMPT  # noqa: E402
 
 FAKE_CLI = """#!/usr/bin/env python3
 import json, pathlib, re, sys
@@ -47,7 +47,7 @@ def umgebung(tmp_path, monkeypatch):
     return root
 
 
-def export(folder: Path, name: str, pages: dict[str, str], prompt: str = PROMPT) -> Path:
+def export(folder: Path, name: str, pages: dict[str, str], prompt: str = ANWEISUNG) -> Path:
     """An export file like ocr_korrektur.py writes it; ``pages`` maps image file names to target answers."""
     folder.mkdir(parents=True, exist_ok=True)
     rows = []
@@ -92,8 +92,8 @@ def test_dokumente_des_pruefsatzes_sind_ausgeschlossen(tmp_path, umgebung):
 
 
 def test_andere_anweisung_und_fehlende_typzeile_werden_abgelehnt(tmp_path):
-    with pytest.raises(SystemExit, match="PROMPT"):
-        tune.lies_jsonl(export(tmp_path, "a.jsonl", seiten(2), prompt="Lies die Seite."))
+    with pytest.raises(SystemExit, match="ANWEISUNG"):
+        tune.lies_jsonl(export(tmp_path, "a.jsonl", seiten(2), prompt=PROMPT))  # an export from before the decision
     with pytest.raises(SystemExit, match="Typzeile"):
         tune.lies_jsonl(export(tmp_path, "b.jsonl", {"001_A.pdf_S1.png": "Sehr geehrte Damen und Herren"}))
 
@@ -129,7 +129,7 @@ def test_lauf_wird_nummeriert_abgelegt_und_nie_ueberschrieben(tmp_path, umgebung
     n_train, n_val = sum(info["seiten"]["training"].values()), sum(info["seiten"]["validierung"].values())
     assert n_train + n_val == 40 and n_val > 0
     assert info["status"] == "fertig" and info["weg"] == "neu"
-    assert info["prompt_sha256"] == tune.PROMPT_SHA and len(info["daten"][0]["sha256"]) == 64
+    assert info["anweisung_sha256"] == tune.ANWEISUNG_SHA and info["regeln_sha256"] == tune.REGELN_SHA and len(info["daten"][0]["sha256"]) == 64
     assert info["verlust"] == {"training": 0.5, "validierung": 0.75, "validierung_je_epoche": [1.25, 0.75]}
     assert len((erster / "daten" / "training.jsonl").read_text(encoding="utf-8").splitlines()) == n_train
     assert set(json.loads((erster / "daten" / "dataset_info.json").read_text())) == {"training", "validierung"}
@@ -169,10 +169,17 @@ def test_weitertrainieren_nach_geaenderter_vorgabe_wird_abgelehnt(tmp_path, umge
     assert tune.main(["trainieren", "--modell", "qwen2b", "--daten", str(daten)]) == 0
     lauf = tune.alle_laeufe()[0]
     info = json.loads((lauf / "lauf.json").read_text(encoding="utf-8"))
-    info["prompt_sha256"] = "0" * 64  # as if PROMPT had been changed since
+    info["regeln_sha256"] = "0" * 64  # as if PROMPT (the rules) had been changed since
     tune.schreibe_lauf(lauf, info)
     with pytest.raises(SystemExit, match="neu trainieren"):
         tune.main(["trainieren", "--modell", "qwen2b", "--daten", str(daten), "--weiter-von", "1"])
+    assert tune.main(["trainieren", "--modell", "qwen2b", "--daten", str(daten), "--weiter-von", "1",
+                      "--regeln-geaendert"]) == 0
+    info["anweisung_sha256"] = "0" * 64  # a different request to the model: never continue
+    tune.schreibe_lauf(lauf, info)
+    with pytest.raises(SystemExit, match="ANWEISUNG"):
+        tune.main(["trainieren", "--modell", "qwen2b", "--daten", str(daten), "--weiter-von", "1",
+                   "--regeln-geaendert"])
 
 
 def test_fehlende_bilder_und_knapper_speicher_halten_den_start_auf(tmp_path, umgebung, monkeypatch):
@@ -228,5 +235,5 @@ def test_fragen_schickt_bild_und_vorgabe(tmp_path, chat_server, capsys):
     chat_server["answers"] = ["TYP: Leer"]
     assert tune.main(["fragen", "--bild", str(bild), "--modellname", "probe", "--url", chat_server["url"]]) == 0
     inhalt = chat_server["requests"][0]["messages"][0]["content"]
-    assert inhalt[0]["image_url"]["url"].startswith("data:image/png;base64,") and inhalt[1]["text"] == PROMPT
+    assert inhalt[0]["image_url"]["url"].startswith("data:image/png;base64,") and len(inhalt) == 1  # the image only
     assert "Typ Leer" in capsys.readouterr().out

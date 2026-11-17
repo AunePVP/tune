@@ -67,7 +67,7 @@ def ask(url: str, model: str, prompt: str, image: bytes, mime: str, max_tokens: 
         extra: dict | None = None) -> dict:
     payload = {"model": model, "max_tokens": max_tokens, "temperature": 0.0, **(extra or {}),
                "messages": [{"role": "user", "content": [
-        {"type": "text", "text": prompt},
+        *([{"type": "text", "text": prompt}] if prompt else []),  # a fine-tuned reader gets the image only
         {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{base64.b64encode(image).decode()}"}}]}]}
     req = urllib.request.Request(url.rstrip("/") + "/chat/completions", data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"}, method="POST")
@@ -235,6 +235,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--vorgabe", action="store_true",
                     help="mit der Anweisung aus ocr_vorgabe.py fragen (für Modelle ohne eigenen Prompt) und die "
                          "TYP:-Zeile auswerten: Seiten je Typ, fehlende Typzeile, „Leer“ mit Inhalt, Stempel")
+    ap.add_argument("--trainiert", action="store_true",
+                    help="für feingetunte Modelle: so fragen wie im Training (ocr_vorgabe.ANWEISUNG, nur das Bild) "
+                         "und die TYP:-Zeile auswerten wie bei --vorgabe")
     args = ap.parse_args(argv)
     folder = Path(args.ordner)
     out = Path(args.ausgabe) if args.ausgabe else folder.resolve().parent / "ergebnis"
@@ -242,7 +245,8 @@ def main(argv: list[str] | None = None) -> int:
         extra = json.loads(args.extra_body) if args.extra_body.strip() else None
     except json.JSONDecodeError as exc:
         raise SystemExit(f"--extra-body ist kein gültiges JSON: {exc}")
-    prompt = _target().PROMPT if args.vorgabe else PROMPT
+    prompt = _target().ANWEISUNG if args.trainiert else _target().PROMPT if args.vorgabe else PROMPT
+    args.vorgabe = args.vorgabe or args.trainiert
     rows = run(folder, [parse_model(s, prompt) for s in args.modell], parallel=args.parallel,
                max_tokens=args.max_tokens, timeout=args.timeout, out=out, extra=extra, target=args.vorgabe)
     print("\n".join(summary(rows)))

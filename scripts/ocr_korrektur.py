@@ -28,7 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ocr_vergleich import MIME, pages_in  # noqa: E402
-from ocr_vorgabe import PROMPT, TYPES, join, split  # noqa: E402
+from ocr_vorgabe import ANWEISUNG, PROMPT, TYPES, join, split  # noqa: E402
 
 SKIPPED = ".nicht-verwenden"
 
@@ -120,7 +120,7 @@ def export(folder: Path, target: Path, *, test_target: Path | None = None, share
             page_type, _text = split(answer)
             counts["pruef" if to_test else "training"][page_type or "Text"] += 1
             (test if to_test else train).write(json.dumps(
-                {"messages": [{"role": "user", "content": "<image>" + PROMPT},
+                {"messages": [{"role": "user", "content": "<image>" + ANWEISUNG},
                               {"role": "assistant", "content": answer}],
                  "images": [image_path(page, base)]}, ensure_ascii=False) + "\n")
     return counts

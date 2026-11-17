@@ -24,7 +24,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "scripts"))
 import tune  # noqa: E402
-from ocr_vorgabe import PROMPT, join  # noqa: E402
+from ocr_vorgabe import ANWEISUNG, join  # noqa: E402
 
 A4 = (1240, 1754)  # 150 dpi
 
@@ -86,7 +86,7 @@ def erzeuge(ordner: Path, name: str, anzahl: int, start: int) -> Path:
             bild, antwort = arten[i % len(arten)](i, random.Random(i))
             datei = ordner / f"{i:03d}_Erfunden{i // 2}.pdf_S{i % 2 + 1}.png"
             bild.save(datei)
-            f.write(json.dumps({"messages": [{"role": "user", "content": "<image>" + PROMPT},
+            f.write(json.dumps({"messages": [{"role": "user", "content": "<image>" + ANWEISUNG},
                                              {"role": "assistant", "content": antwort}],
                                 "images": [str(datei)]}, ensure_ascii=False) + "\n")
     return ziel
