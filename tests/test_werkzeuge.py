@@ -186,3 +186,32 @@ def test_the_correction_tool_exports_and_starts_a_training_from_the_browser(tmp_
     assert (tmp_path / "aufruf.txt").read_text() == f"trainieren --modell glm-ocr --daten {target}"
     # Without the training tool next to the scripts (the Windows PC) there is no training page.
     assert ocr_korrektur.Tool(folder)._training_link() == ""
+
+
+def test_text_lines_with_their_place_on_the_page(tmp_path):
+    import ocr_bloecke
+    tsv = ("level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+           "1\t1\t0\t0\t0\t0\t0\t0\t1000\t2000\t-1\t\n"
+           "4\t1\t1\t1\t1\t0\t100\t200\t500\t40\t-1\t\n"
+           "5\t1\t1\t1\t1\t1\t100\t200\t240\t40\t96\tPrüfbericht\n"
+           "5\t1\t1\t1\t1\t2\t360\t200\t240\t40\t91\tNr. 4711\n"
+           "4\t1\t2\t1\t1\t0\t0\t900\t1000\t4\t-1\t\n"
+           "5\t1\t2\t1\t1\t1\t0\t900\t1000\t4\t30\t—\n")
+    assert ocr_bloecke.parse_tsv(tsv) == [{"x": 0.1, "y": 0.1, "w": 0.5, "h": 0.02, "t": "Prüfbericht Nr. 4711"}]
+    assert ocr_bloecke.parse_tsv("") == []
+    # The correction tool hands the lines of a page to the browser, and an empty list where there are none.
+    _pages(tmp_path, 2)
+    (tmp_path / "000_Beispiel_S1.bloecke.json").write_text('[{"x":0.1,"y":0.1,"w":0.5,"h":0.02,"t":"Prüfbericht"}]',
+                                                           encoding="utf-8")
+    tool = ocr_korrektur.Tool(tmp_path)
+    server = ocr_korrektur.ThreadingHTTPServer(("127.0.0.1", 0), ocr_korrektur.handler(tool))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        assert json.loads(opener.open(f"{base}/bloecke/0").read())[0]["t"] == "Prüfbericht"
+        assert json.loads(opener.open(f"{base}/bloecke/1").read()) == []
+        assert "id='marke'" in opener.open(f"{base}/seite/0").read().decode()
+    finally:
+        server.shutdown()
+    assert len(ocr_korrektur.pages_in(tmp_path)) == 2  # the side files are no pages

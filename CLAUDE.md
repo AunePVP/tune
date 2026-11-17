@@ -249,6 +249,11 @@ erreichbar (nur im Tailnet; `--host` nie auf `0.0.0.0`, das Werkzeug hat keine A
 und das Ende des Protokolls (`~/training.training.log`). Es läuft immer nur ein Training. Dienst ansehen oder neu
 starten: `systemctl --user status|restart tune-korrektur`.
 
+Vor dem Korrigieren einmal die Lage der Textzeilen ermitteln (Spark, einige Minuten, fortsetzbar):
+`python3 ~/tune/scripts/ocr_bloecke.py --ordner ~/training`. Im Werkzeug: Klick auf eine Textstelle im Bild markiert
+den passenden Text rechts; der Cursor im Text zeigt die Zeile im Bild. Zoom mit den Knöpfen, Strg+Mausrad oder
+Doppelklick, Drehen mit ⟲/⟳ (nur Ansicht).
+
 Korrigieren auf dem PC (Alternative; Ordner `training` und `scripts/` aus diesem Repository dorthin kopieren):
 ```powershell
 python scripts\ocr_korrektur.py --ordner training
@@ -445,6 +450,7 @@ Typzeile oder mit Inhalt bei `TYP: Leer` als Fehler behandeln.
 | `scripts/ocr_vorgabe.py` | die Vorgabe: `PROMPT` (Regeln, für untrainierte Modelle), `ANWEISUNG` (Anfrage an das feingetunte Modell: leer), `TYPES`, `split`/`join` der Antwortform |
 | `scripts/ocr_vergleich.py` | Modelle auf einem Seitenordner vergleichen (OpenAI-kompatible Server; Tempo, Tokens, Schleifen; HTML nebeneinander; `--extra-body`; `--vorgabe` für `PROMPT` und Typzeile) |
 | `scripts/ocr_entwurf.py` | Entwürfe nach der Vorgabe erzeugen (`<Seite>.entwurf.txt`, fortsetzbar); `--trainiert`, wenn ein feingetuntes Modell die Entwürfe schreibt |
+| `scripts/ocr_bloecke.py` | Lage der Textzeilen je Seite mit dem lokalen `tesseract` ermitteln (`<Seite>.bloecke.json`); damit markiert das Korrekturwerkzeug nach einem Klick auf die Seite die passende Textstelle und umgekehrt. Nur Hilfe beim Korrigieren, geht nie in die Soll-Texte |
 | `scripts/ocr_korrektur.py` | Korrigieren im Browser (`<Seite>.soll.txt`), Export als JSONL, getrennt in Training und Prüfsatz nach Dokument (`--pruef-anteil`, `--ohne-dokumente`, `--bild-basis`); `--host` für den Zugriff über Tailscale; Seite „Training“ (Export und Start von `training/tune.py`), wenn `training/` daneben liegt |
 | `training/tune-korrektur.service` | Vorlage: Korrekturwerkzeug als Dienst auf dem Spark |
 | `training/README.md` | Anleitung zum Training: jeder Schritt, jede Einstellung, „war der Lauf gut?“, „zu wenig Speicher“ |

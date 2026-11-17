@@ -156,7 +156,11 @@ border-bottom:1px solid var(--line);color:var(--dim)}
 #werkzeug button{padding:.25rem .6rem}#stufe{color:var(--dim);font-size:12px;min-width:3.5rem;text-align:center}
 #bild{flex:1;min-height:0;overflow:auto;padding:.7rem;display:flex}
 #blatt{position:relative;margin:auto;flex:none}
-#blatt img{position:absolute;left:50%;top:50%;background:#fff;border:1px solid var(--line);cursor:zoom-in}
+#dreh{position:absolute;left:50%;top:50%}
+#dreh img{display:block;width:100%;height:100%;background:#fff;border:1px solid var(--line);cursor:crosshair}
+#marke{position:absolute;display:none;border:2px solid var(--accent);background:rgba(91,124,250,.22);pointer-events:none}
+#hinweis{margin-left:.6rem;color:var(--dim);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+textarea::selection{background:var(--accent);color:#fff}
 form.seite{display:flex;flex-direction:column;min-height:0;padding:.7rem;gap:.6rem;border-left:1px solid var(--line)}
 .typ{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}.typ b{margin-right:.3rem}
 .typ label{border:1px solid var(--line);border-radius:6px;padding:.35rem .7rem;cursor:pointer}
@@ -173,7 +177,7 @@ section{padding:1rem 1.2rem;max-width:72rem;overflow:auto}code{color:var(--dim)}
 @media(max-width:1000px){main{grid-template-columns:1fr;overflow:auto}nav{max-height:30vh}textarea{min-height:50vh}}
 """
 
-_SCRIPT = """
+_SCRIPT = r"""
 const liste=document.getElementById('liste'),wahl=document.getElementById('filter');
 function filtern(){const f=wahl.value;try{localStorage.setItem('filter',f)}catch(e){}
  for(const a of liste.children)a.style.display=(f==='alle'||a.dataset.s===f||a.classList.contains('cur'))?'':'none'}
@@ -182,26 +186,71 @@ wahl.addEventListener('change',filtern);filtern();
 const cur=liste.querySelector('.cur');if(cur)cur.scrollIntoView({block:'center'});
 // Zoom and rotation of the page image: for reading only, the image file is not changed. The rotation is remembered
 // per page in this browser.
-const bild=document.getElementById('bild'),blatt=document.getElementById('blatt'),img=blatt.querySelector('img'),
- stufe=document.getElementById('stufe'),merk='drehung:'+img.dataset.name;
+const bild=document.getElementById('bild'),blatt=document.getElementById('blatt'),dreh=document.getElementById('dreh'),
+ img=dreh.querySelector('img'),marke=document.getElementById('marke'),stufe=document.getElementById('stufe'),
+ hinweis=document.getElementById('hinweis'),feld=document.querySelector('textarea'),merk='drehung:'+img.dataset.name;
 let grad=0,zoom=null;try{grad=parseInt(localStorage.getItem(merk)||'0')||0}catch(e){}
+function passend(){const nw=img.naturalWidth,nh=img.naturalHeight,quer=grad%180!==0;
+ return Math.min((bild.clientWidth-24)/(quer?nh:nw),(bild.clientHeight-24)/(quer?nw:nh))}
 function zeichnen(){const nw=img.naturalWidth,nh=img.naturalHeight;if(!nw)return;
- const quer=grad%180!==0,bw=quer?nh:nw,bh=quer?nw:nh;
- const pass=Math.min((bild.clientWidth-24)/bw,(bild.clientHeight-24)/bh),z=zoom===null?pass:zoom;
- blatt.style.width=bw*z+'px';blatt.style.height=bh*z+'px';img.style.width=nw*z+'px';img.style.height=nh*z+'px';
- img.style.transform='translate(-50%,-50%) rotate('+grad+'deg)';img.style.cursor=zoom===null?'zoom-in':'zoom-out';
- stufe.textContent=Math.round(z*100)+' %'}
+ const quer=grad%180!==0,z=zoom===null?passend():zoom;
+ blatt.style.width=(quer?nh:nw)*z+'px';blatt.style.height=(quer?nw:nh)*z+'px';
+ dreh.style.width=nw*z+'px';dreh.style.height=nh*z+'px';
+ dreh.style.transform='translate(-50%,-50%) rotate('+grad+'deg)';stufe.textContent=Math.round(z*100)+' %'}
 function drehen(d){grad=(grad+d+360)%360;try{localStorage.setItem(merk,grad)}catch(e){};zeichnen()}
-function zoomen(f){const nw=img.naturalWidth,nh=img.naturalHeight,quer=grad%180!==0;
- const pass=Math.min((bild.clientWidth-24)/(quer?nh:nw),(bild.clientHeight-24)/(quer?nw:nh));
- zoom=Math.min(4,Math.max(.1,(zoom===null?pass:zoom)*f));zeichnen()}
+function zoomen(f){zoom=Math.min(4,Math.max(.1,(zoom===null?passend():zoom)*f));zeichnen()}
 document.getElementById('links').onclick=()=>drehen(-90);document.getElementById('rechts').onclick=()=>drehen(90);
 document.getElementById('kleiner').onclick=()=>zoomen(1/1.25);document.getElementById('groesser').onclick=()=>zoomen(1.25);
 document.getElementById('passen').onclick=()=>{zoom=null;zeichnen()};
 document.getElementById('voll').onclick=()=>{zoom=1;zeichnen()};
-img.onclick=()=>{zoom=zoom===null?1:null;zeichnen()};
+img.ondblclick=()=>{zoom=zoom===null?1:null;zeichnen()};
 bild.addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();zoomen(e.deltaY<0?1.15:1/1.15)}},{passive:false});
 window.addEventListener('resize',zeichnen);img.addEventListener('load',zeichnen);zeichnen();
+// Text lines with their place on the page (from ocr_bloecke.py): a click on the page marks the matching text on the
+// right, the cursor in the text marks the line on the page. The match is found by comparing letter triples, because
+// the text on the right is a draft by another model and never identical to what was read at that place.
+let zeilen=[];
+fetch('/bloecke/'+img.dataset.nr).then(r=>r.json()).then(d=>{zeilen=d;
+ hinweis.textContent=d.length?'Klick auf eine Textstelle markiert sie rechts':'keine Textlagen für diese Seite'}).catch(()=>{});
+function norm(t){return t.toLowerCase().replace(/[^a-z0-9äöüß]+/g,'')}
+function tripel(t){const m=new Map();for(let k=0;k+3<=t.length;k++){const g=t.substr(k,3);m.set(g,(m.get(g)||0)+1)}return m}
+function gleichheit(a,b){let n=0,sa=0,sb=0;for(const v of a.values())sa+=v;for(const v of b.values())sb+=v;
+ if(!sa||!sb)return 0;for(const[g,v]of a)n+=Math.min(v,b.get(g)||0);return 2*n/(sa+sb)}
+function zeigeMarke(z){if(!z){marke.style.display='none';return}
+ marke.style.left=z.x*100+'%';marke.style.top=z.y*100+'%';marke.style.width=z.w*100+'%';marke.style.height=z.h*100+'%';
+ marke.style.display='block'}
+function sucheImText(wort){const ziel=norm(wort);if(ziel.length<3)return null;
+ // positions of the kept characters, so a match in the normalised text can be mapped back to the textarea
+ const roh=feld.value,orte=[];let glatt='';
+ for(let k=0;k<roh.length;k++){const c=norm(roh[k]);if(c){glatt+=c;orte.push(k)}}
+ const tz=tripel(ziel),len=ziel.length,schritt=Math.max(1,Math.floor(len/6));let best=0,wo=-1;
+ for(let k=0;k+Math.min(len,glatt.length)<=glatt.length;k+=schritt){
+  const g=gleichheit(tz,tripel(glatt.substr(k,len)));if(g>best){best=g;wo=k}}
+ for(let k=Math.max(0,wo-schritt);wo>=0&&k<=Math.min(glatt.length-1,wo+schritt);k++){
+  const g=gleichheit(tz,tripel(glatt.substr(k,len)));if(g>best){best=g;wo=k}}
+ if(wo<0||best<0.45)return null;
+ return{von:orte[wo],bis:orte[Math.min(orte.length-1,wo+len-1)]+1,guete:best}}
+img.addEventListener('click',e=>{if(!zeilen.length)return;
+ // the click in the rotated view, converted back to the unrotated image (fractions of width and height)
+ const r=img.getBoundingClientRect(),u=(e.clientX-r.left)/r.width,v=(e.clientY-r.top)/r.height;
+ const p=grad===90?[v,1-u]:grad===180?[1-u,1-v]:grad===270?[1-v,u]:[u,v];
+ let treffer=null,nah=1e9;
+ for(const z of zeilen){const dx=Math.max(z.x-p[0],0,p[0]-z.x-z.w),dy=Math.max(z.y-p[1],0,p[1]-z.y-z.h),d=dx*dx+dy*dy;
+  if(d<nah){nah=d;treffer=z}}
+ if(!treffer||nah>0.0004){zeigeMarke(null);hinweis.textContent='hier wurde kein Text erkannt';return}
+ zeigeMarke(treffer);const f=sucheImText(treffer.t);
+ if(!f){hinweis.textContent='im Text rechts nicht gefunden: „'+treffer.t.slice(0,60)+'“';return}
+ hinweis.textContent='';feld.focus();feld.setSelectionRange(f.von,f.bis);
+ const vor=feld.value.slice(0,f.von).split('\n').length-1,alle=feld.value.split('\n').length;
+ feld.scrollTop=Math.max(0,feld.scrollHeight*vor/Math.max(1,alle)-feld.clientHeight/3)});
+function vomText(){if(!zeilen.length||feld.selectionStart!==feld.selectionEnd)return;
+ const t=feld.value,c=feld.selectionStart,a=t.lastIndexOf('\n',c-1)+1;let b=t.indexOf('\n',c);if(b<0)b=t.length;
+ let stueck=t.slice(a,b);if(stueck.length>90)stueck=t.slice(Math.max(a,c-45),Math.min(b,c+45));
+ const ts=tripel(norm(stueck));let best=0,treffer=null;
+ for(const z of zeilen){const zt=norm(z.t),g=zt.length<=norm(stueck).length?gleichheit(tripel(zt),ts)
+   :gleichheit(ts,tripel(zt));if(g>best){best=g;treffer=z}}
+ zeigeMarke(best>=0.5?treffer:null)}
+feld.addEventListener('click',vomText);feld.addEventListener('keyup',e=>{if(e.key.startsWith('Arrow'))vomText()});
 document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='Enter'){document.querySelector('button[value=speichern]').click()}});
 """
 
@@ -327,9 +376,10 @@ class Tool:
                 f"<span id='stufe'></span><button type='button' id='groesser' title='vergrößern (auch Strg+Mausrad)'>+</button>"
                 f"<button type='button' id='passen'>Einpassen</button><button type='button' id='voll'>100 %</button>"
                 f"<button type='button' id='links' title='nach links drehen'>⟲</button>"
-                f"<button type='button' id='rechts' title='nach rechts drehen'>⟳</button></div>"
-                f"<div id='bild'><div id='blatt'><img src='/bild/{i}' alt='' data-name='{html.escape(page.name)}' "
-                f"title='Klick: Originalgröße / einpassen'></div></div></div>"
+                f"<button type='button' id='rechts' title='nach rechts drehen'>⟳</button>"
+                f"<span id='hinweis'></span></div>"
+                f"<div id='bild'><div id='blatt'><div id='dreh'><img src='/bild/{i}' alt='' "
+                f"data-name='{html.escape(page.name)}' data-nr='{i}'><div id='marke'></div></div></div></div></div>"
                 f"<form class='seite' method='post' action='/seite/{i}'><div class='typ'><b>Typ</b>{radios}"
                 f"<span class='st'>Seite {i + 1} · {states[i] if has_text(page) else 'noch kein Entwurf'} · Alt+1–4</span></div>"
                 f"<textarea name='text' autofocus spellcheck='false'>{html.escape(text)}</textarea>"
@@ -375,6 +425,10 @@ def handler(tool: Tool):
             if len(parts) == 2 and (i := self._index(parts[1])) is not None:
                 if parts[0] == "seite":
                     return self._send(200, tool.page_html(i).encode("utf-8"))
+                if parts[0] == "bloecke":
+                    lines = _side(tool.pages[i], ".bloecke.json")
+                    body = lines.read_bytes() if lines.exists() else b"[]"
+                    return self._send(200, body, "application/json; charset=utf-8")
                 if parts[0] == "bild":
                     page = tool.pages[i]
                     return self._send(200, page.read_bytes(), MIME[page.suffix.lower()])

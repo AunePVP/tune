@@ -8,6 +8,7 @@
 *.bin
 *.pdf
 *.tesseract.txt
+*.bloecke.json
 *.entwurf.txt
 *.soll.txt
 *.nicht-verwenden
