@@ -6,31 +6,52 @@ from __future__ import annotations
 
 TYPES = ("Text", "Plan", "Foto", "Leer")
 
-PROMPT = (
-    "Du liest eine einzelne Seite aus der Projektakte eines Brandschutz-Ingenieurbüros. Schreibe in die erste Zeile "
-    "den Seitentyp: „TYP: Text“, „TYP: Plan“, „TYP: Foto“ oder „TYP: Leer“. Der Typ richtet sich nach der Art der "
-    "Seite, auch wenn danach nichts zu schreiben ist. Danach:\n"
-    "- Text (Brief, Bericht, Bescheid, Prüfbericht, Gutachten, Formular, Datenblatt, auch mit eingebetteten Fotos "
-    "oder Abbildungen): den gesamten sichtbaren Text wörtlich in Lesereihenfolge, auch Kopf- und Fußzeilen und "
-    "Bildunterschriften. Tabellen als Markdown-Tabellen, Ankreuzfelder als ☒ oder ☐ mit ihrer Beschriftung, "
-    "Handschrift als [handschriftlich: …] an ihrer Stelle, Unterschriften als [Unterschrift]. Text in eingebetteten "
-    "Fotos nur, wenn er klar lesbar ist, an der Stelle des Fotos; ist er es nicht, schreibst du dazu nichts, auch "
-    "kein [unleserlich].\n"
-    "- Plan (Grundriss, Schnitt, Lageplan, Brandschutz- und Fluchtplan): das Schriftfeld (Planart, Objekt und "
-    "Adresse, Geschoss oder Bereich, Plan-Nr., Index, Datum, Maßstab, Verfasser), die Legende, zusammenhängende "
-    "Textblöcke mit Hinweisen oder Auflagen (mindestens ein ganzer Satz oder eine mehrzeilige Notiz), Stempel und "
-    "handschriftliche Eintragungen mit Worten als [handschriftlich: …]. Ist eine solche Eintragung da, aber nicht "
-    "lesbar, schreibst du einmal [handschriftlich: unleserlich]. Keine Raumnamen, Maße, Achsen, Flurstücke oder "
-    "einzelnen Beschriftungen in der Zeichnung.\n"
-    "- Foto: nur klar lesbarer Text, der im Foto zu sehen ist (Typenschilder, Zulassungsnummern, Beschriftungen) – "
-    "keine Beschreibung des Fotos. Ohne solchen Text nach der Typzeile nichts.\n"
-    "- Leer (unbedruckte Seite oder nur Grafik, Logo, Hintergrund): nach der Typzeile nichts.\n"
-    "Stempel: jeden Stempel, der einen Vermerk, ein Datum, ein Aktenzeichen oder eine Prüf- oder Listennummer trägt "
-    "(Genehmigung, Prüfvermerk, Eingang), genau einmal und wörtlich als [Stempel: …], nicht lesbare Teile darin als "
-    "[unleserlich]. Reine Namens- und Adressstempel und Logos lässt du weg.\n"
-    "Schreibe nur, was auf der Seite zu sehen ist. Unleserliche Stellen als [unleserlich], je Stelle einmal. Erfinde "
-    "nichts, beschreibe nichts, fasse nichts zusammen."
-)
+PROMPT = """Du schreibst eine einzelne Seite aus der Projektakte eines Brandschutz-Ingenieurbüros ab. Erste Zeile: der \
+Seitentyp „TYP: Text“, „TYP: Plan“, „TYP: Foto“ oder „TYP: Leer“. Danach nur der Wortlaut der Seite – keine Einleitung, \
+keine Beschreibung, keine Zusammenfassung.
+
+Typ:
+- Text: Briefe, Berichte, Bescheide, Formulare, Datenblätter, Tabellen, Deckblätter mit Titeltext, auch \
+Detailzeichnungen in Zulassungen und Datenblättern. Auch mit eingebetteten Fotos.
+- Plan: Pläne eines Bauprojekts (Grundriss, Schnitt, Ansicht, Lageplan, Brandschutz- und Fluchtplan).
+- Foto: mit einer Kamera aufgenommen. Nur klar lesbarer Text im Foto (Typenschilder, Zulassungsnummern), sonst nach \
+der Typzeile nichts.
+- Leer: leere Seite oder nur Logo, Grafik, Icon, Rendering, freigestelltes Produktbild. Nach der Typzeile nichts.
+
+Text-Seiten:
+- Reihenfolge: Kopfbereich, Hauptteil, Fußbereich; darin von oben nach unten und links nach rechts, mehrspaltig \
+Spalte für Spalte. Gedrehte Seiten so, wie man sie aufrecht liest.
+- Ein Absatz ist eine Zeile: Zeilenumbrüche innerhalb eines Absatzes zusammenziehen, Silbentrennung am Zeilenende \
+auflösen. Zwischen Blöcken eine Leerzeile.
+- Anschrift, Briefkopf, Kopf- und Fußzeilen: jede gedruckte Zeile bleibt eine eigene Zeile. Kopf- und Fußzeilen \
+immer vollständig mitschreiben (Seitenzahl, Dateiname, Anschrift, Telefon, Bankdaten), jede nur einmal.
+- Überschriften als eigene Zeile mit ihrer Nummer, ohne #. Keine Formatierung: kein Fett, kein Kursiv, keine Links, \
+kein LaTeX.
+- Aufzählungszeichen (•, –, ▪) als „- “; echte Nummerierung (1., a)) bleibt.
+- Tabellen als Markdown-Tabellen, leere Zellen leer. Formulare ohne Raster als „Feldname: Wert“ je Zeile. \
+Ankreuzfelder als „☒ Beschriftung“ oder „☐ Beschriftung“. Handschrift in Formularfeldern als Wert des Felds.
+- Zeichen wie gedruckt (², §, °, Ø, „…“, Dezimalkomma, alte Rechtschreibung, Groß- und Kleinschreibung), nichts \
+korrigieren.
+- Text in eingebetteten Fotos nur, wenn er klar lesbar ist, an der Stelle des Fotos; sonst dazu nichts.
+- In Detailzeichnungen: Beschriftungen mit Worten oder Artikelnummern, keine reinen Maßzahlen.
+
+Plan-Seiten, in dieser Reihenfolge: das Schriftfeld als „Feldname: Wert“ je Zeile (Feldnamen wie gedruckt, leere \
+Felder weglassen), die Legende als „- Eintrag“, zusammenhängende Hinweis-Textblöcke (mindestens ein ganzer Satz oder \
+eine mehrzeilige Notiz), Eintragungen der Behörde und Stempel. Keine Raumnamen, Maße, Achsen, Höhenkoten, Flurstücke \
+oder einzelnen Beschriftungen in der Zeichnung.
+
+Marker – nur diese vier, keine anderen eckigen Klammern:
+- [unleserlich] für eine unlesbare Stelle, je Stelle einmal. Unsichere Ziffern nie raten.
+- [Unterschrift] für eine Unterschrift, an ihrer Stelle.
+- [Stempel: Wortlaut] für jeden Stempel mit Aussage oder Datum (Genehmigung, Prüfvermerk, Eingang), genau einmal und \
+wörtlich. Berufs-, Kammer-, Firmen-, Namens- und Adressstempel weglassen.
+- [handschriftlich: Wortlaut] für handschriftliche Notizen außerhalb von Formularfeldern und nachträgliche \
+Korrekturen. Auf Plänen einmal [handschriftlich: unleserlich], wenn eine Eintragung da, aber nicht lesbar ist.
+
+Weglassen: Logos (auch Schriftzüge im Logo), Symbole, Durchgestrichenes, Kringel und Markierungen.
+
+Schreibe nur, was auf der Seite zu sehen ist. Erfinde nichts, beschreibe nichts, fasse nichts zusammen. Im Zweifel \
+[unleserlich] oder weglassen."""
 
 # What the FINE-TUNED model is asked in training and in operation: nothing but the page image (decision of the user,
 # 17.11.2026). The model has this one task and learns the rules from the corrected pages; PROMPT above stays the

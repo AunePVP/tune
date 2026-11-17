@@ -183,6 +183,8 @@ font:13px/1.5 ui-monospace,Consolas,monospace;padding:.7rem;border:1px solid var
 white-space:pre-wrap;overflow-wrap:break-word;overflow-y:scroll;tab-size:4}
 #hinter{color:transparent;border-color:transparent;pointer-events:none}
 #hinter mark{color:transparent;background:rgba(217,138,74,.45);border-radius:2px}
+#hinter mark.ok{background:rgba(63,185,138,.22)}
+.da{position:absolute;border:1px solid rgba(63,185,138,.8);background:rgba(63,185,138,.10);pointer-events:none}
 #feld textarea{color:var(--text);background:transparent}
 textarea:focus{outline:1px solid var(--accent)}
 .fehlt{position:absolute;border:2px solid var(--warn);background:rgba(217,138,74,.15);pointer-events:none}
@@ -274,16 +276,17 @@ try{an.checked=localStorage.getItem('abweichungen')!=='aus'}catch(e){}
 function falten(t){return t.toLowerCase().replace(/ä/g,'a').replace(/ö/g,'o').replace(/ü/g,'u').replace(/ß/g,'ss')
  .replace(/[^a-z0-9]+/g,'')}
 function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-function abgleich(){for(const m of dreh.querySelectorAll('.fehlt'))m.remove();
+function abgleich(){for(const m of dreh.querySelectorAll('.fehlt,.da'))m.remove();
  if(!an.checked||!zeilen.length){hinter.textContent='';return}
  const alles=falten(zeilen.map(z=>z.t).join(' ')),text=feld.value,re=/[0-9A-Za-zÄÖÜäöüß]+/g;
  let erste=text.indexOf('\n');if(erste<0)erste=text.length;let out='',pos=0,m;
  while((m=re.exec(text))){if(m.index<erste)continue;const w=m[0],f=falten(w);
-  if(f.length<(/^[0-9]+$/.test(w)?2:3)||AUSNAHME.has(f)||alles.includes(f))continue;
-  out+=esc(text.slice(pos,m.index))+'<mark>'+esc(w)+'</mark>';pos=m.index+w.length}
+  if(f.length<(/^[0-9]+$/.test(w)?2:3)||AUSNAHME.has(f))continue;
+  out+=esc(text.slice(pos,m.index))+(alles.includes(f)?'<mark class="ok">':'<mark>')+esc(w)+'</mark>';
+  pos=m.index+w.length}
  hinter.innerHTML=out+esc(text.slice(pos))+' ';hinter.scrollTop=feld.scrollTop;
- for(const z of zeilen){if(falten(z.t).length<4||sucheImText(z.t))continue;
-  const d=document.createElement('div');d.className='fehlt';d.title='fehlt im Text: '+z.t;
+ for(const z of zeilen){if(falten(z.t).length<4)continue;const gefunden=sucheImText(z.t);
+  const d=document.createElement('div');d.className=gefunden?'da':'fehlt';if(!gefunden)d.title='fehlt im Text: '+z.t;
   d.style.left=z.x*100+'%';d.style.top=z.y*100+'%';d.style.width=z.w*100+'%';d.style.height=z.h*100+'%';
   dreh.appendChild(d)}}
 let warten=0;feld.addEventListener('input',()=>{clearTimeout(warten);warten=setTimeout(abgleich,500)});
@@ -423,8 +426,8 @@ class Tool:
                 f"<button type='button' id='passen'>Einpassen</button><button type='button' id='voll'>100 %</button>"
                 f"<button type='button' id='links' title='nach links drehen'>⟲</button>"
                 f"<button type='button' id='rechts' title='nach rechts drehen'>⟳</button>"
-                f"<label id='abw' title='orange im Text: steht so nicht bei Tesseract · orange im Bild: Zeile fehlt "
-                f"im Text'><input type='checkbox' id='an' checked> Abweichungen zu Tesseract</label>"
+                f"<label id='abw' title='grün: stimmt mit Tesseract überein · orange im Text: steht so nicht bei "
+                f"Tesseract · orange im Bild: Zeile fehlt im Text'><input type='checkbox' id='an' checked> Abgleich mit Tesseract</label>"
                 f"<span id='hinweis'></span></div>"
                 f"<div id='bild'><div id='blatt'><div id='dreh'><img src='/bild/{i}' alt='' "
                 f"data-name='{html.escape(page.name)}' data-nr='{i}'><div id='marke'></div></div></div></div></div>"

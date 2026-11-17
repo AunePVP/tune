@@ -21,8 +21,12 @@ from ocr_vorgabe import ANWEISUNG, PROMPT, join, split  # noqa: E402
 
 
 def draft(folder: Path, model: dict, *, parallel: int, max_tokens: int, timeout: float, extra: dict | None,
-          prompt: str = PROMPT) -> dict:
-    todo = [p for p in pages_in(folder) if not p.with_name(p.stem + ".entwurf.txt").exists()]
+          prompt: str = PROMPT, again: bool = False) -> dict:
+    # ``again``: write the drafts anew (after a change of the rules), except for pages already corrected or discarded
+    todo = [p for p in pages_in(folder)
+            if not p.with_name(p.stem + ".entwurf.txt").exists()
+            or (again and not p.with_name(p.stem + ".soll.txt").exists()
+                and not p.with_name(p.stem + ".nicht-verwenden").exists())]
     stats = {"seiten": len(todo), "fehler": 0, "ohne_typ": 0, "schleife": 0, "meldungen": {}}
 
     def one(page: Path) -> None:
@@ -61,10 +65,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--extra-body", default="", help="weitere Felder als JSON, z. B. Denken ausschalten")
     ap.add_argument("--trainiert", action="store_true",
                     help="das Modell ist ein feingetunter Seitenleser: so fragen wie im Training (nur das Bild)")
+    ap.add_argument("--neu", action="store_true",
+                    help="Entwürfe neu schreiben (nach geänderten Regeln); korrigierte und verworfene Seiten bleiben")
     args = ap.parse_args(argv)
     extra = json.loads(args.extra_body) if args.extra_body.strip() else None
     stats = draft(Path(args.ordner), parse_model(args.modell), parallel=args.parallel, max_tokens=args.max_tokens,
-                  timeout=args.timeout, extra=extra, prompt=ANWEISUNG if args.trainiert else PROMPT)
+                  timeout=args.timeout, extra=extra, prompt=ANWEISUNG if args.trainiert else PROMPT, again=args.neu)
     print(f"{stats['seiten']} Entwürfe – {stats['fehler']} Fehler (beim nächsten Aufruf erneut), "
           f"{stats['ohne_typ']} ohne Typzeile (als Text angenommen), {stats['schleife']} Schleifen/abgeschnitten (leer "
           f"gelassen)")
