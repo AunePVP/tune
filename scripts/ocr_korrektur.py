@@ -53,6 +53,11 @@ def current(page: Path) -> tuple[str, str]:
     return "Text", ""
 
 
+def has_text(page: Path) -> bool:
+    """Whether there is a correction or a draft; without either the type shown is only the default."""
+    return _side(page, ".soll.txt").exists() or _side(page, ".entwurf.txt").exists()
+
+
 def save(page: Path, page_type: str, text: str) -> None:
     if page_type not in TYPES:
         raise ValueError(page_type)
@@ -306,7 +311,7 @@ class Tool:
             f" {t}</label>" for k, t in enumerate(TYPES, start=1))
         items = "".join(
             f"<a class='it{' cur' if k == i else ''}' data-s='{states[k]}' href='/seite/{k}' title='{html.escape(p.name)}'>"
-            f"<span class='n'>{html.escape(p.stem)}</span><span class='t'>{current(p)[0]}</span></a>"
+            f"<span class='n'>{html.escape(p.stem)}</span><span class='t'>{current(p)[0] if has_text(p) else '–'}</span></a>"
             for k, p in enumerate(self.pages))
         counts = {name: states.count(name) for name in ("offen", "korrigiert", "verworfen")}
         options = "".join(f"<option value='{v}'>{label}</option>" for v, label in (
@@ -326,7 +331,7 @@ class Tool:
                 f"<div id='bild'><div id='blatt'><img src='/bild/{i}' alt='' data-name='{html.escape(page.name)}' "
                 f"title='Klick: Originalgröße / einpassen'></div></div></div>"
                 f"<form class='seite' method='post' action='/seite/{i}'><div class='typ'><b>Typ</b>{radios}"
-                f"<span class='st'>Seite {i + 1} · {states[i]} · Alt+1–4</span></div>"
+                f"<span class='st'>Seite {i + 1} · {states[i] if has_text(page) else 'noch kein Entwurf'} · Alt+1–4</span></div>"
                 f"<textarea name='text' autofocus spellcheck='false'>{html.escape(text)}</textarea>"
                 f"<div class='knoepfe'><button class='primary' name='aktion' value='speichern'>Speichern &amp; weiter "
                 f"(Strg+Enter)</button><a class='btn' href='/seite/{after}'>Überspringen</a><span class='sp'></span>"
