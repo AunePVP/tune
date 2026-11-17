@@ -121,12 +121,84 @@ def export(folder: Path, target: Path, *, test_target: Path | None = None, share
     return counts
 
 
-_STYLE = ("body{font:14px system-ui,sans-serif;margin:0}header{padding:.5rem 1rem;background:#f3f4f6;display:flex;"
-          "gap:1rem;align-items:center;flex-wrap:wrap}main{display:grid;grid-template-columns:1fr 1fr;gap:1rem;"
-          "padding:1rem}img{max-width:100%;border:1px solid #ccc}textarea{width:100%;height:70vh;font:13px "
-          "ui-monospace,monospace}.typ label{margin-right:1rem}button{padding:.4rem .9rem;margin-right:.4rem}"
-          ".offen{color:#888}.korrigiert{color:#176}.verworfen{color:#a40}details{margin-top:.6rem}"
-          "pre{white-space:pre-wrap;max-height:20rem;overflow:auto;background:#fafafa;padding:.4rem}")
+_STYLE = """
+:root{--bg:#16181d;--panel:#1e2128;--line:#2e333d;--text:#e7e9ee;--dim:#9aa1ae;--accent:#5b7cfa;--ok:#3fb98a;--warn:#d98a4a}
+*{box-sizing:border-box}html,body{height:100%}
+body{font:14px system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;background:var(--bg);color:var(--text);
+display:flex;flex-direction:column}
+a{color:inherit;text-decoration:none}
+header{flex:none;height:52px;padding:0 1rem;background:var(--panel);border-bottom:1px solid var(--line);display:flex;
+gap:.8rem;align-items:center}
+header b{font-size:16px}header .sp{flex:1}
+.badge{font-size:12px;color:var(--dim);background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:.15rem .6rem}
+button,.btn{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:6px;
+padding:.45rem .9rem;cursor:pointer;white-space:nowrap}
+button:hover,.btn:hover{border-color:var(--dim)}button:disabled{opacity:.5;cursor:default}
+.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+main{flex:1;min-height:0;display:grid;grid-template-columns:290px minmax(0,1fr) minmax(0,1fr)}
+nav{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+nav select{margin:.6rem;padding:.45rem;font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line);
+border-radius:6px}
+#liste{overflow-y:auto;flex:1}
+.it{display:flex;gap:.5rem;align-items:center;padding:.5rem .8rem;border-left:3px solid transparent;
+border-bottom:1px solid var(--line);color:var(--dim)}
+.it:hover{background:var(--panel)}.it.cur{background:#2a3350;border-left-color:var(--accent);color:var(--text)}
+.it .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.it .t{font-size:11px;border:1px solid var(--line);border-radius:999px;padding:.05rem .5rem}
+.it[data-s=korrigiert] .n::before{content:"✓ ";color:var(--ok)}.it[data-s=verworfen] .n{text-decoration:line-through}
+#mitte{display:flex;flex-direction:column;min-height:0;min-width:0;background:#0f1014}
+#werkzeug{flex:none;display:flex;gap:.3rem;align-items:center;padding:.4rem .7rem;border-bottom:1px solid var(--line)}
+#werkzeug button{padding:.25rem .6rem}#stufe{color:var(--dim);font-size:12px;min-width:3.5rem;text-align:center}
+#bild{flex:1;min-height:0;overflow:auto;padding:.7rem;display:flex}
+#blatt{position:relative;margin:auto;flex:none}
+#blatt img{position:absolute;left:50%;top:50%;background:#fff;border:1px solid var(--line);cursor:zoom-in}
+form.seite{display:flex;flex-direction:column;min-height:0;padding:.7rem;gap:.6rem;border-left:1px solid var(--line)}
+.typ{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}.typ b{margin-right:.3rem}
+.typ label{border:1px solid var(--line);border-radius:6px;padding:.35rem .7rem;cursor:pointer}
+.typ input{position:absolute;opacity:0}.typ label:has(input:checked){background:var(--accent);border-color:var(--accent);color:#fff}
+.typ .st{margin-left:auto;color:var(--dim);font-size:12px}
+textarea{flex:1;min-height:0;width:100%;resize:none;font:13px/1.5 ui-monospace,Consolas,monospace;color:var(--text);
+background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:.7rem}
+textarea:focus{outline:1px solid var(--accent)}
+.knoepfe{display:flex;gap:.5rem;align-items:center}.knoepfe .sp{flex:1}.gefahr{color:var(--warn)}
+details{color:var(--dim)}details pre{max-height:14rem}
+pre{white-space:pre-wrap;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:.6rem;
+font:12px/1.45 ui-monospace,Consolas,monospace}
+section{padding:1rem 1.2rem;max-width:72rem;overflow:auto}code{color:var(--dim)}
+@media(max-width:1000px){main{grid-template-columns:1fr;overflow:auto}nav{max-height:30vh}textarea{min-height:50vh}}
+"""
+
+_SCRIPT = """
+const liste=document.getElementById('liste'),wahl=document.getElementById('filter');
+function filtern(){const f=wahl.value;try{localStorage.setItem('filter',f)}catch(e){}
+ for(const a of liste.children)a.style.display=(f==='alle'||a.dataset.s===f||a.classList.contains('cur'))?'':'none'}
+try{wahl.value=localStorage.getItem('filter')||'offen'}catch(e){}
+wahl.addEventListener('change',filtern);filtern();
+const cur=liste.querySelector('.cur');if(cur)cur.scrollIntoView({block:'center'});
+// Zoom and rotation of the page image: for reading only, the image file is not changed. The rotation is remembered
+// per page in this browser.
+const bild=document.getElementById('bild'),blatt=document.getElementById('blatt'),img=blatt.querySelector('img'),
+ stufe=document.getElementById('stufe'),merk='drehung:'+img.dataset.name;
+let grad=0,zoom=null;try{grad=parseInt(localStorage.getItem(merk)||'0')||0}catch(e){}
+function zeichnen(){const nw=img.naturalWidth,nh=img.naturalHeight;if(!nw)return;
+ const quer=grad%180!==0,bw=quer?nh:nw,bh=quer?nw:nh;
+ const pass=Math.min((bild.clientWidth-24)/bw,(bild.clientHeight-24)/bh),z=zoom===null?pass:zoom;
+ blatt.style.width=bw*z+'px';blatt.style.height=bh*z+'px';img.style.width=nw*z+'px';img.style.height=nh*z+'px';
+ img.style.transform='translate(-50%,-50%) rotate('+grad+'deg)';img.style.cursor=zoom===null?'zoom-in':'zoom-out';
+ stufe.textContent=Math.round(z*100)+' %'}
+function drehen(d){grad=(grad+d+360)%360;try{localStorage.setItem(merk,grad)}catch(e){};zeichnen()}
+function zoomen(f){const nw=img.naturalWidth,nh=img.naturalHeight,quer=grad%180!==0;
+ const pass=Math.min((bild.clientWidth-24)/(quer?nh:nw),(bild.clientHeight-24)/(quer?nw:nh));
+ zoom=Math.min(4,Math.max(.1,(zoom===null?pass:zoom)*f));zeichnen()}
+document.getElementById('links').onclick=()=>drehen(-90);document.getElementById('rechts').onclick=()=>drehen(90);
+document.getElementById('kleiner').onclick=()=>zoomen(1/1.25);document.getElementById('groesser').onclick=()=>zoomen(1.25);
+document.getElementById('passen').onclick=()=>{zoom=null;zeichnen()};
+document.getElementById('voll').onclick=()=>{zoom=1;zeichnen()};
+img.onclick=()=>{zoom=zoom===null?1:null;zeichnen()};
+bild.addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();zoomen(e.deltaY<0?1.15:1/1.15)}},{passive:false});
+window.addEventListener('resize',zeichnen);img.addEventListener('load',zeichnen);zeichnen();
+document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='Enter'){document.querySelector('button[value=speichern]').click()}});
+"""
 
 
 MODELS = {"qwen2b": "Qwen3.5-2B", "glm-ocr": "GLM-OCR", "qwen4b": "Qwen3.5-4B (Rückfallebene)"}
@@ -199,13 +271,13 @@ class Tool:
                          f" {html.escape(v)}</label>" for k, v in MODELS.items())
         return (f"<!doctype html><meta charset='utf-8'><title>Training</title>"
                 + ("<meta http-equiv='refresh' content='20;url=/training'>" if running else "")
-                + f"<style>{_STYLE}section{{padding:1rem;max-width:70rem}}</style><header><b>Training</b>"
-                f"<a href='/'>← zurück zum Korrigieren</a></header><section>"
+                + f"<style>{_STYLE}</style><header><b>Training</b><span class='sp'></span>"
+                f"<a class='btn' href='/'>← zurück zum Korrigieren</a></header><section>"
                 + (f"<p><b>{html.escape(message)}</b></p>" if message else "")
                 + f"<p>{done} von {len(self.pages)} Seiten korrigiert: "
                 + ", ".join(f"{t} {n}" for t, n in by_type.items()) + f". {hint}</p>"
                 f"<form method='post' action='/training'><div class='typ'>Modell: {radios}</div>"
-                f"<button{' disabled' if running else ''}>Exportieren und trainieren</button></form>"
+                f"<p><button class='primary'{' disabled' if running else ''}>Exportieren und trainieren</button></p></form>"
                 f"<p>Der Knopf schreibt die korrigierten Seiten nach <code>{html.escape(str(self.target))}</code> "
                 f"(Prüfsatz daneben, wird nie trainiert) und startet einen neuen nummerierten Lauf. Weiter "
                 f"korrigieren geht währenddessen. Es läuft immer nur ein Training.</p><p>{status}</p>"
@@ -213,7 +285,7 @@ class Tool:
                 f"<h3>Protokoll (Ende)</h3><pre>{html.escape(tail or '–')}</pre></section>")
 
     def _training_link(self) -> str:
-        return "<a href='/training'>Training</a>" if self.tune_py else ""
+        return "<a class='btn primary' href='/training'>Mit Korrekturen trainieren</a>" if self.tune_py else ""
 
     def next_open(self, after: int = -1) -> int:
         n = len(self.pages)
@@ -226,25 +298,43 @@ class Tool:
     def page_html(self, i: int) -> str:
         page = self.pages[i]
         page_type, text = current(page)
-        done = sum(state(p) == "korrigiert" for p in self.pages)
+        states = [state(p) for p in self.pages]
+        done = states.count("korrigiert")
         known = _side(page, ".tesseract.txt")
         radios = "".join(
             f"<label><input type='radio' name='typ' value='{t}' accesskey='{k}'{' checked' if t == page_type else ''}>"
             f" {t}</label>" for k, t in enumerate(TYPES, start=1))
-        return (f"<!doctype html><meta charset='utf-8'><title>{i + 1}/{len(self.pages)} {html.escape(page.name)}</title>"
-                f"<style>{_STYLE}</style><header><b>{done} von {len(self.pages)} korrigiert</b>"
-                f"<span>Seite {i + 1}: {html.escape(page.name)} – <span class='{state(page)}'>{state(page)}</span></span>"
-                f"<a href='/seite/{max(0, i - 1)}'>← zurück</a><a href='/seite/{min(len(self.pages) - 1, i + 1)}'>"
-                f"weiter →</a><a href='/'>nächste offene</a>{self._training_link()}</header><main><div><img src='/bild/{i}' alt=''></div>"
-                f"<form method='post' action='/seite/{i}'><div class='typ'>Typ: {radios}</div>"
-                f"<textarea name='text' autofocus>{html.escape(text)}</textarea><div>"
-                f"<button name='aktion' value='speichern'>Speichern &amp; weiter (Strg+Enter)</button>"
-                f"<button name='aktion' value='verwerfen' formnovalidate>nicht verwenden</button></div>"
+        items = "".join(
+            f"<a class='it{' cur' if k == i else ''}' data-s='{states[k]}' href='/seite/{k}' title='{html.escape(p.name)}'>"
+            f"<span class='n'>{html.escape(p.stem)}</span><span class='t'>{current(p)[0]}</span></a>"
+            for k, p in enumerate(self.pages))
+        counts = {name: states.count(name) for name in ("offen", "korrigiert", "verworfen")}
+        options = "".join(f"<option value='{v}'>{label}</option>" for v, label in (
+            ("offen", f"Offen ({counts['offen']})"), ("korrigiert", f"Korrigiert ({counts['korrigiert']})"),
+            ("verworfen", f"Nicht verwendet ({counts['verworfen']})"), ("alle", f"Alle ({len(self.pages)})")))
+        after = min(len(self.pages) - 1, i + 1)
+        return (f"<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+                f"<title>{i + 1}/{len(self.pages)} {html.escape(page.name)}</title><style>{_STYLE}</style>"
+                f"<header><b>Seiten korrigieren</b><span class='badge'>{done} von {len(self.pages)} korrigiert</span>"
+                f"<span class='sp'></span>{self._training_link()}</header><main>"
+                f"<nav><select id='filter'>{options}</select><div id='liste'>{items}</div></nav>"
+                f"<div id='mitte'><div id='werkzeug'><button type='button' id='kleiner' title='verkleinern'>−</button>"
+                f"<span id='stufe'></span><button type='button' id='groesser' title='vergrößern (auch Strg+Mausrad)'>+</button>"
+                f"<button type='button' id='passen'>Einpassen</button><button type='button' id='voll'>100 %</button>"
+                f"<button type='button' id='links' title='nach links drehen'>⟲</button>"
+                f"<button type='button' id='rechts' title='nach rechts drehen'>⟳</button></div>"
+                f"<div id='bild'><div id='blatt'><img src='/bild/{i}' alt='' data-name='{html.escape(page.name)}' "
+                f"title='Klick: Originalgröße / einpassen'></div></div></div>"
+                f"<form class='seite' method='post' action='/seite/{i}'><div class='typ'><b>Typ</b>{radios}"
+                f"<span class='st'>Seite {i + 1} · {states[i]} · Alt+1–4</span></div>"
+                f"<textarea name='text' autofocus spellcheck='false'>{html.escape(text)}</textarea>"
+                f"<div class='knoepfe'><button class='primary' name='aktion' value='speichern'>Speichern &amp; weiter "
+                f"(Strg+Enter)</button><a class='btn' href='/seite/{after}'>Überspringen</a><span class='sp'></span>"
+                f"<button class='gefahr' name='aktion' value='verwerfen' formnovalidate>Nicht verwenden</button></div>"
                 f"<details><summary>Text bisher (Textebene/Tesseract)</summary><pre>"
                 f"{html.escape(known.read_text(encoding='utf-8') if known.exists() else '–')}</pre></details>"
                 f"<details><summary>Regeln</summary><pre>{html.escape(PROMPT)}</pre></details></form></main>"
-                "<script>document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='Enter'){"
-                "document.querySelector(\"button[value=speichern]\").click()}})</script>")
+                f"<script>{_SCRIPT}</script>")
 
 
 def handler(tool: Tool):
