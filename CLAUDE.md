@@ -66,16 +66,17 @@ Unleserliches als `[unleserlich]`. Steht nichts Lesbares da, bleibt die Seite le
 | **Text** (Brief, Bericht, Bescheid, Prüfbericht, Gutachten, Formular, Datenblatt) | den vollständigen Text wörtlich in Lesereihenfolge; Tabellen als Markdown-Tabellen; Ankreuzfelder als ☒/☐ mit Beschriftung | – |
 | **Kopf- und Fußzeilen** | immer mitschreiben – Projektakte entfernt Zeilen, die auf fast jeder Seite eines Dokuments gleich wiederkehren (das Modell sieht nur eine Seite und weiß nicht, ob es die erste ist) | – |
 | **Fotos in Textseiten** (Fotodokumentation, Datenblatt mit Bild) | Die Seite ist `Text`. Text im Foto nur, wenn er **klar lesbar** ist, an der Stelle des Fotos (bei der Bildunterschrift) | unscharfen Fototext: nichts, auch kein `[unleserlich]` (sonst Dutzende Marker ohne Nutzen, und kleine Modelle raten dort) |
-| **Stempel** | jeden Stempel mit Vermerk, Datum, Aktenzeichen oder Prüf-/Listennummer (Genehmigung, Prüfvermerk, Eingang, Prüfingenieur, Verfasser mit Listennummer), **genau einmal**, wörtlich als `[Stempel: …]`; nicht lesbare Teile darin als `[unleserlich]`, z. B. `[Stempel: Genehmigt [unleserlich] 2005]` | reine Namens- und Adressstempel; nie zusammenfassen, nie erfinden |
-| **Handschrift** | Vermerke („erledigt“, „i. O.“, Korrekturen, Daten) an ihrer Stelle als `[handschriftlich: …]`; Unterschriften als `[Unterschrift]` | – |
+| **Stempel** | jeden Stempel mit Aussage oder Datum (Genehmigung, Prüfvermerk, Eingang), **genau einmal**, wörtlich als `[Stempel: …]`; nicht lesbare Teile darin als `[unleserlich]`, z. B. `[Stempel: Genehmigt [unleserlich] 2005]` | Berufs-, Kammer-, Sachverständigen-, Firmen-, Namens- und Adressstempel; nie zusammenfassen, nie erfinden |
+| **Handschrift** | Notizen außerhalb von Formularfeldern (Rand, oben) und nachträgliche Korrekturen als `[handschriftlich: …]`; Handschrift **in Formularfeldern** als Wert des Felds, ohne Marker; Unterschriften als `[Unterschrift]` | Durchgestrichenes, Kringel und Markierungen |
 | **Logos** | nichts | – |
 | **Plan** (Grundriss, Schnitt, Lageplan, Brandschutz- und Fluchtplan) | **Schriftfeld** (Planart, Objekt/Adresse, Geschoss/Bereich, Plan-Nr., Index, Datum, Maßstab, Verfasser), **Legende**, **Hinweis-Textblöcke** (zusammenhängender Text, mindestens ein ganzer Satz oder eine mehrzeilige Notiz), Stempel, **handschriftliche Eintragungen mit Worten** (Grüneintragungen der Behörde, Prüfvermerke) als `[handschriftlich: …]`; ist eine Eintragung erkennbar da, aber nicht lesbar, einmal `[handschriftlich: unleserlich]` (die Information „hier hat jemand etwas eingetragen“ ist selbst wertvoll: Original ansehen) | Raumnamen, Maße, Achsen, Flurstücke, einzelne Wörter oder Beschriftungen in der Zeichnung („Flur“, „Büro 1.04“, „T30“ an einer Tür), auch wenn sie fachlich klingen; reine Zahlen- und Maßkorrekturen |
-| **Foto** (auch Produktfoto) | nur klar lesbaren Text, der im Foto zu sehen ist (Typenschilder, Zulassungsnummern, Beschriftungen); ohne solchen Text bleibt der Inhalt leer | eine Beschreibung des Fotos |
-| **Leer** (unbedruckte Seite, reine Grafik, Logo, Hintergrund) | nichts | – |
+| **Foto** (mit einer Kamera aufgenommen: Baustelle, Typenschild, abfotografiertes Dokument) | nur klar lesbaren Text, der im Foto zu sehen ist (Typenschilder, Zulassungsnummern, Beschriftungen); ohne solchen Text bleibt der Inhalt leer | eine Beschreibung des Fotos |
+| **Leer** (leere Seite oder am Computer Gemachtes ohne lesbaren Inhalt: Logos, Mail-Signaturbilder, Grafiken, Icons, Renderings, freigestellte Produktbilder, Trennblätter) | nichts | – |
 
 **Typ nach Seitenart:** Ein Foto bleibt `TYP: Foto` und ein Plan `TYP: Plan`, auch wenn danach nichts zu schreiben ist.
-`TYP: Leer` gilt nur für unbedruckte Seiten und reine Grafik. Eine Seite mit Fließtext oder Bildunterschriften ist
-immer `Text`, auch mit eingebetteten Fotos.
+`TYP: Leer` gilt für leere Seiten und am Computer Gemachtes ohne lesbaren Inhalt. Eine Seite mit Fließtext oder
+Bildunterschriften ist immer `Text`, auch mit eingebetteten Fotos. Die genaue Abgrenzung und alle Einzelheiten der
+Schreibweise stehen in der Formatvorlage (Abschnitt 3.1); wo sie genauer ist als die Tabelle, gilt sie.
 
 **Für die Trainingsdaten:** Die meisten Seiten müssen **ohne Stempel** sein, sonst lernt das Modell, Stempel zu
 erwarten und zu erfinden. Mehrere Stempel auf einer Seite: jeden genau einmal.
@@ -99,6 +100,128 @@ nichts). Wozu: Die Suche kann nach Typ filtern, Projektakte erkennt Fehleinordnu
 
 Wer `PROMPT` ändert, ändert die Regeln: Soll-Texte müssen dazu passen. Wer `ANWEISUNG` ändert, muss neu trainieren,
 und Projektakte muss sie übernehmen.
+
+### 3.1 Formatvorlage für die Soll-Texte
+
+Mit dem Nutzer am 17.11.2026 beim Korrigieren echter Seiten festgelegt. Sie gilt für jede Korrektur; das Modell
+lernt sie allein aus den Soll-Texten (es wird ohne Anweisung gefragt, Abschnitt 5). `PROMPT` in `ocr_vorgabe.py`
+enthält nur den Kern davon und dient den Entwürfen untrainierter Modelle.
+
+**Typ**
+- **Text:** Briefe, Berichte, Bescheide, Formulare, Datenblätter, Tabellen. Auch Detailzeichnungen in Zulassungen,
+  Datenblättern, Anleitungen (z. B. DIBt-Anlagen). Auch Deckblätter mit Titeltext.
+- **Plan:** Pläne eines Bauprojekts (Grundriss, Schnitt, Ansicht, Lageplan, Brandschutz-/Fluchtplan, Pegelplan). Auch
+  eine Planzeichnung ohne Schriftfeld, z. B. eine Ansicht auf einem Deckblatt (dann Inhalt leer).
+- **Foto:** mit einer Kamera aufgenommen (Baustelle, Typenschild, abfotografiertes Dokument). Inhalt nur klar
+  lesbarer Text, sonst leer.
+- **Leer:** am Computer gemacht oder leere Seite ohne lesbaren Inhalt: Logos, Mail-Signaturbilder, Grafiken, Icons,
+  Renderings, freigestellte Produktbilder, Trennblätter. Inhalt immer leer.
+- **Mischseiten:** Typ nach dem Hauptinhalt. Text in eingebetteten Fotos nur, wenn klar lesbar, an seiner Stelle.
+  Sonst nichts (kein `[unleserlich]`, kein `[Foto]`).
+
+**Grundform**
+1. Erste Zeile `TYP: Text|Plan|Foto|Leer`, danach der Inhalt (bei Leer nichts).
+2. Nur Wortlaut: keine Einleitung, Beschreibung, Zusammenfassung.
+
+**Reihenfolge**
+
+3. Kopfbereich → Hauptteil → Fußbereich, darin oben→unten, links→rechts.
+4. Mehrspaltig Spalte für Spalte. Randspalte (z. B. Leistungsliste im Briefkopf) direkt nach dem Kopfbereich.
+5. Briefe: Kopf, Absenderzeile, Empfänger, Kontaktblock, Randspalte, Zeichen/Datum, Betreff, Text, Gruß, Name,
+   `[Unterschrift]`, Anlage, Fußzeile.
+6. Gedrehte Seiten so abschreiben, wie man sie aufrecht liest. Im Training gedreht lassen (das Seitenbild wird
+   nicht gedreht; das Drehen im Korrekturwerkzeug ändert nur die Ansicht).
+
+**Zeilen und Absätze**
+
+7. Ein Absatz = eine Zeile (Umbrüche des Satzbilds zusammenziehen). Leerzeile zwischen Blöcken.
+8. Trennung am Zeilenende auflösen („Verwen-dung“ → „Verwendung“). Echte Bindestriche bleiben („Flucht- und“,
+   „123456-abc-1“).
+9. Eigene Zeilen bleiben eigene Zeilen: Anschrift, Briefkopf, Schriftfeld, Kopf- und Fußzeile.
+10. Überschriften als eigene Zeile ohne `#`, Nummern bleiben („3.2 Rettungswege“).
+
+**Kopf- und Fußzeilen**
+
+11. Immer vollständig mitschreiben: Seitenzahl, Dateiname, Anschrift, Telefon, Bankdaten, Geschäftsführer,
+    Registergericht.
+12. Jede gedruckte Zeile bleibt eine eigene Zeile, nicht zusammenziehen. Projektakte entfernt Wiederkehrendes
+    zeilenweise, darum auf jeder Seite gleich schreiben.
+13. Mehrspaltig Spalte für Spalte. Leerzeile zum Text.
+14. Unsichere Ziffern (IBAN, Telefon) als `[unleserlich]`, nie raten.
+
+**Listen, Tabellen, Formulare**
+
+15. Aufzählungszeichen (•, –, ▪, ✓) → „- “. Echte Nummerierung (1., a), (3)) bleibt. Unterpunkte zwei Leerzeichen
+    eingerückt.
+16. Tabellen als Markdown: erste Zeile als Kopf, leere Zellen leer, verbundene Zellen → Wert in die erste Zelle,
+    keine Ausrichtungszeichen.
+17. Formulare ohne Raster: „Feldname: Wert“ je Zeile. Auf Textseiten bleiben gedruckte Feldnamen auch ohne Wert
+    stehen.
+18. Ankreuzfelder: `☒ Beschriftung` / `☐ Beschriftung`.
+19. Handschrift in Formularfeldern als Wert, ohne Marker. Striche als „leer“ → leere Zelle.
+
+**Zeichen**
+
+20. Wie gedruckt: ², ³, §, °, Ø, ≤, –, „…“, Dezimalkomma, alte Rechtschreibung. Nichts normalisieren oder
+    korrigieren, kein LaTeX.
+21. Keine Formatierung: kein Fett, Kursiv, keine Links, kein `#`.
+22. Fußnoten: Zeichen an seiner Stelle, Fußnotentext dort, wo er steht.
+
+**Marker** (nur diese vier, keine anderen Klammern wie `[Logo]`, `[Bild]`, `[Tabelle]`, `[Foto]`)
+
+23. `[unleserlich]`: ein unlesbares Stück = ein Marker.
+24. `[Unterschrift]`: nur auf Textseiten, an ihrer Stelle.
+25. `[Stempel: Wortlaut]`: nur Stempel mit Aussage oder Datum (Genehmigung, Prüfvermerk, Eingang), wörtlich, jeder
+    einmal, `[unleserlich]` darin erlaubt. Berufs-, Kammer-, Sachverständigen- und Firmenstempel nicht.
+26. `[handschriftlich: Wortlaut]`: Notizen außerhalb von Formularfeldern (Rand, oben) und nachträgliche Korrekturen.
+    Randnotizen ohne eindeutige Zuordnung ans Ende.
+
+**Weglassen**
+
+27. Logos (auch Schriftzüge im Logo; der Firmenname als normaler Text bleibt), Symbole und Warndreiecke,
+    Durchgestrichenes, Kringel und Markierungen (Zeichen mit Inhalt wie ? oder * bleiben).
+28. Detailzeichnungen (Text-Seiten): reine Maßzahlen (≤ 600) und Detailbuchstaben (Y, Z) weg. Beschriftungen mit
+    Worten oder Artikelnummern bleiben.
+
+**Plan**
+
+29. Reihenfolge: Schriftfeld („Feldname: Wert“, Feldnamen wie gedruckt, auch englisch; leere Felder weg), Legende
+    („- Eintrag“), Hinweis-Textblöcke (mindestens ein ganzer Satz oder eine mehrzeilige Notiz),
+    Behörden-Eintragungen und Stempel (unlesbar: einmal `[handschriftlich: unleserlich]`).
+30. Nicht: Raumnamen, Maße, Achsen, Höhenkoten, Flurstücke, Pegelwerte, Geräte- und Einzelbeschriftungen, Schilder
+    in der Zeichnung.
+
+**Zweifel**
+
+31. Lieber `[unleserlich]` oder weglassen als raten. Große Planscans, deren Schriftfeld man im Bild selbst kaum
+    lesen kann → „nicht verwenden“.
+32. Häufige Entwurfsfehler von Qwen: falsch gelesene Wörter, „mbh“ statt „mbH“, doppelt geschriebene Kopfzeilen am
+    Ende, „•“ statt „- “, fehlende Leerzeilen.
+
+**Beispiel (erfunden)**
+
+```
+TYP: Text
+Musterplan Ingenieure GmbH • Musterstadt 2
+
+Die Tür zwischen Lager 0.12 und dem notwendigen Flur wird feuerhemmend T 30-RS ausgeführt.
+
+Gegen diese Änderung bestehen keine Bedenken:
+
+- Der Raum dient nicht zum ständigen Aufenthalt von Personen.
+- Seine Fläche ist kleiner als 200 m², so dass nach § 36 Abs. 1 auf einen notwendigen Flur verzichtet werden kann.
+
+mit freundlichen Grüßen
+
+Max Muster
+Musterplan Ingenieure GmbH
+[Unterschrift]
+
+Anlage: Zeichnung Nr. 100200-BS-01, Index A
+
+100200-260101-mm-Anschreiben.odt
+Musterplan Ingenieure GmbH • Hauptstraße 1 • 12345 Musterstadt • Tel.: 01234/567 89 - 0
+```
 
 ## 4. Was gemessen ist
 

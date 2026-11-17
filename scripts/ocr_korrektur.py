@@ -53,6 +53,17 @@ def current(page: Path) -> tuple[str, str]:
     return "Text", ""
 
 
+def rules() -> str:
+    """The rules to show while correcting: the format guide of CLAUDE.md (section 3.1) if this is a checkout of the
+    repository, else the short form in PROMPT. Read on every call, so an edit shows up without a restart."""
+    try:
+        text = (Path(__file__).resolve().parents[1] / "CLAUDE.md").read_text(encoding="utf-8")
+        start = text.index("### 3.1 ")
+        return text[start:text.index("\n## ", start)].strip()
+    except (OSError, ValueError):
+        return PROMPT
+
+
 def has_text(page: Path) -> bool:
     """Whether there is a correction or a draft; without either the type shown is only the default."""
     return _side(page, ".soll.txt").exists() or _side(page, ".entwurf.txt").exists()
@@ -177,7 +188,7 @@ textarea:focus{outline:1px solid var(--accent)}
 .fehlt{position:absolute;border:2px solid var(--warn);background:rgba(217,138,74,.15);pointer-events:none}
 #abw{font-size:12px;color:var(--dim);margin-left:.6rem;white-space:nowrap;cursor:pointer}
 .knoepfe{display:flex;gap:.5rem;align-items:center}.knoepfe .sp{flex:1}.gefahr{color:var(--warn)}
-details{color:var(--dim)}details pre{max-height:14rem}
+details{color:var(--dim)}details pre{max-height:22rem}
 pre{white-space:pre-wrap;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:.6rem;
 font:12px/1.45 ui-monospace,Consolas,monospace}
 section{padding:1rem 1.2rem;max-width:72rem;overflow:auto}code{color:var(--dim)}
@@ -426,7 +437,7 @@ class Tool:
                 f"<button class='gefahr' name='aktion' value='verwerfen' formnovalidate>Nicht verwenden</button></div>"
                 f"<details><summary>Text bisher (Textebene/Tesseract)</summary><pre>"
                 f"{html.escape(known.read_text(encoding='utf-8') if known.exists() else '–')}</pre></details>"
-                f"<details><summary>Regeln</summary><pre>{html.escape(PROMPT)}</pre></details></form></main>"
+                f"<details><summary>Regeln (Formatvorlage)</summary><pre>{html.escape(rules())}</pre></details></form></main>"
                 f"<script>{_SCRIPT}</script>")
 
 
