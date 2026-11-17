@@ -11,6 +11,10 @@ Each model is an OpenAI-compatible server (vLLM, llama.cpp, LM Studio, Ollama) o
 written are ``ergebnis/<Name>/<Seite>.txt``, ``ergebnis/zusammenfassung.csv`` and ``ergebnis/vergleich.html`` (page
 image, Tesseract's text and every model's text side by side). The summary printed at the end – time, answer tokens,
 characters, loops, cut-off answers per model – holds no page text and can be passed on; the texts are real project data.
+
+With ``--vorgabe`` the models are asked with the target prompt of ocr_vorgabe.py (which must lie next to this file) and
+the ``TYP:`` line of every answer is evaluated: pages per type, answers without a type line, and pages typed "Leer" that
+carry text all the same.
 """
 from __future__ import annotations
 
@@ -84,12 +88,23 @@ def ask(url: str, model: str, prompt: str, image: bytes, mime: str, max_tokens: 
             "prompt_tokens": usage.get("prompt_tokens"), "tokens": usage.get("completion_tokens"), "error": None}
 
 
-def parse_model(spec: str) -> dict:
+def parse_model(spec: str, default_prompt: str = PROMPT) -> dict:
     parts = spec.split("|")
     if len(parts) < 3:
         raise SystemExit(f"--modell „{spec}“: erwartet Name|URL|Modell-ID[|Prompt]")
     return {"name": parts[0].strip(), "url": parts[1].strip(), "model": parts[2].strip(),
-            "prompt": "|".join(parts[3:]).strip() or PROMPT}
+            "prompt": "|".join(parts[3:]).strip() or default_prompt}
+
+
+def _target():
+    """The target form (ocr_vorgabe.py next to this file) – imported only for --vorgabe, so that the plain comparison
+    still runs from this single file."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        import ocr_vorgabe
+    except ImportError:
+        raise SystemExit("--vorgabe braucht ocr_vorgabe.py im selben Ordner wie ocr_vergleich.py")
+    return ocr_vorgabe
 
 
 def pages_in(folder: Path) -> list[Path]:
@@ -97,26 +112,35 @@ def pages_in(folder: Path) -> list[Path]:
 
 
 def run(folder: Path, models: list[dict], *, parallel: int, max_tokens: int, timeout: float, out: Path,
-        extra: dict | None = None) -> list[dict]:
+        extra: dict | None = None, target: bool = False) -> list[dict]:
+    """``target``: evaluate the type line of the answers (ocr_vorgabe.split)."""
+    split = _target().split if target else None
     pages = pages_in(folder)
     if not pages:
         raise SystemExit(f"Keine Seitenbilder in {folder}")
     out.mkdir(parents=True, exist_ok=True)
     rows: list[dict] = []
     for m in models:
-        target = out / re.sub(r"[^A-Za-z0-9._-]+", "_", m["name"])
-        target.mkdir(parents=True, exist_ok=True)
+        texts = out / re.sub(r"[^A-Za-z0-9._-]+", "_", m["name"])
+        texts.mkdir(parents=True, exist_ok=True)
         print(f"{m['name']}: {len(pages)} Seite(n), {parallel} gleichzeitig …", flush=True)
         started = time.monotonic()
 
-        def one(page: Path, m=m, target=target) -> dict:
+        def one(page: Path, m=m, texts=texts) -> dict:
             res = ask(m["url"], m["model"], m["prompt"], page.read_bytes(), MIME[page.suffix.lower()], max_tokens,
                       timeout, extra)
-            (target / f"{page.stem}.txt").write_text(res["text"], encoding="utf-8")
-            return {"modell": m["name"], "seite": page.name, "sekunden": round(res["seconds"], 1),
-                    "antwort_tokens": res.get("tokens"), "prompt_tokens": res.get("prompt_tokens"),
-                    "zeichen": len(res["text"]), "abgeschnitten": res.get("finish") == "length",
-                    "schleife": looped(res["text"]), "denkt": bool(res.get("thinking")), "fehler": res["error"] or ""}
+            (texts / f"{page.stem}.txt").write_text(res["text"], encoding="utf-8")
+            row = {"modell": m["name"], "seite": page.name, "sekunden": round(res["seconds"], 1),
+                   "antwort_tokens": res.get("tokens"), "prompt_tokens": res.get("prompt_tokens"),
+                   "zeichen": len(res["text"]), "abgeschnitten": res.get("finish") == "length",
+                   "schleife": looped(res["text"]), "denkt": bool(res.get("thinking")), "fehler": res["error"] or ""}
+            if split and not res["error"]:
+                page_type, body = split(res["text"])
+                row |= {"typ": page_type or "ohne", "inhalt_zeichen": len(body),
+                        "stempel": len(re.findall(r"\[Stempel:", body, re.I))}
+            elif split:
+                row |= {"typ": "", "inhalt_zeichen": 0, "stempel": 0}
+            return row
 
         with ThreadPoolExecutor(max_workers=max(1, parallel)) as pool:
             done = list(pool.map(one, pages))
@@ -133,9 +157,14 @@ def run(folder: Path, models: list[dict], *, parallel: int, max_tokens: int, tim
     return rows
 
 
+TYPE_COLUMNS = ("Text", "Plan", "Foto", "Leer", "ohne")
+
+
 def summary(rows: list[dict]) -> list[str]:
+    typed = any("typ" in r for r in rows)
     lines = ["Modell | Seiten | Seiten/Min. | Ø s je Seite | Ø Antwort-Tokens | Ø Zeichen | Schleifen | abgeschnitten | "
-             "Fehler"]
+             "Fehler" + (" | Text | Plan | Foto | Leer | ohne Typzeile | Leer mit Inhalt | Foto ohne Inhalt | "
+                         "Seiten mit Stempel | Stempel gesamt" if typed else "")]
     for name in dict.fromkeys(r["modell"] for r in rows):
         rs = [r for r in rows if r["modell"] == name]
         ok = [r for r in rs if not r["fehler"]]
@@ -147,7 +176,12 @@ def summary(rows: list[dict]) -> list[str]:
             f"{sum(toks) / len(toks):.0f}" if toks else "–",
             f"{sum(r['zeichen'] for r in ok) / max(1, len(ok)):.0f}",
             str(sum(r["schleife"] for r in rs)), str(sum(r["abgeschnitten"] for r in rs)),
-            str(sum(bool(r["fehler"]) for r in rs))]))
+            str(sum(bool(r["fehler"]) for r in rs))]
+            + ([str(sum(r.get("typ") == t for r in ok)) for t in TYPE_COLUMNS]
+               + [str(sum(r.get("typ") == "Leer" and r.get("inhalt_zeichen", 0) > 0 for r in ok)),
+                  str(sum(r.get("typ") == "Foto" and not r.get("inhalt_zeichen", 0) for r in ok)),
+                  str(sum(r.get("stempel", 0) > 0 for r in ok)), str(sum(r.get("stempel", 0) for r in ok))]
+               if typed else [])))
     return lines
 
 
@@ -179,6 +213,8 @@ def _write_html(path: Path, folder: Path, pages: list[Path], models: list[dict],
             flags = [f for f, on in (("Schleife", r.get("schleife")), ("abgeschnitten", r.get("abgeschnitten")),
                                      (r.get("fehler"), r.get("fehler"))) if on]
             head = f"{r.get('sekunden', '–')} s · {r.get('antwort_tokens') or '–'} Tokens · {r.get('zeichen', 0)} Zeichen"
+            if "typ" in r:
+                head += f" · Typ: {r['typ'] or '–'}"
             warn = f"<div class='warn'>{html.escape(', '.join(flags))}</div>" if flags else ""
             body = html.escape(text.read_text(encoding="utf-8")) if text.exists() else ""
             cells.append(f"<td><div>{html.escape(head)}</div>{warn}<pre>{body}</pre></td>")
@@ -196,6 +232,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--ausgabe", default=None, help="Ergebnisordner (Voreinstellung: ergebnis neben dem Ordner)")
     ap.add_argument("--extra-body", default="", help="weitere Felder der Anfrage als JSON, wie LLM_EXTRA_BODY der App, "
                     'z. B. \'{"chat_template_kwargs":{"enable_thinking":false}}\'')
+    ap.add_argument("--vorgabe", action="store_true",
+                    help="mit der Anweisung aus ocr_vorgabe.py fragen (für Modelle ohne eigenen Prompt) und die "
+                         "TYP:-Zeile auswerten: Seiten je Typ, fehlende Typzeile, „Leer“ mit Inhalt, Stempel")
     args = ap.parse_args(argv)
     folder = Path(args.ordner)
     out = Path(args.ausgabe) if args.ausgabe else folder.resolve().parent / "ergebnis"
@@ -203,8 +242,9 @@ def main(argv: list[str] | None = None) -> int:
         extra = json.loads(args.extra_body) if args.extra_body.strip() else None
     except json.JSONDecodeError as exc:
         raise SystemExit(f"--extra-body ist kein gültiges JSON: {exc}")
-    rows = run(folder, [parse_model(s) for s in args.modell], parallel=args.parallel, max_tokens=args.max_tokens,
-               timeout=args.timeout, out=out, extra=extra)
+    prompt = _target().PROMPT if args.vorgabe else PROMPT
+    rows = run(folder, [parse_model(s, prompt) for s in args.modell], parallel=args.parallel,
+               max_tokens=args.max_tokens, timeout=args.timeout, out=out, extra=extra, target=args.vorgabe)
     print("\n".join(summary(rows)))
     print(f"\nVergleich: {out / 'vergleich.html'}")
     return 0

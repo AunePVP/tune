@@ -136,3 +136,20 @@ def test_the_export_sets_whole_documents_aside_as_the_test_set(tmp_path, capsys)
     assert ocr_korrektur.main(args + ["--pruef-anteil", "0"]) == 0 and len(docs(tmp_path / "t.jsonl")) == 38
     assert ocr_korrektur.document_of(folder / "007_Beispiel_S12.png", {}) == "Beispiel"
     assert ocr_korrektur.image_path(folder / "a.png", "D:\\training") == "D:\\training\\a.png"
+
+
+def test_the_comparison_with_the_target_prompt_counts_the_types(tmp_path, chat_server, capsys):
+    pages = tmp_path / "pruef"
+    pages.mkdir()
+    _pages(pages, 4)
+    chat_server["answers"] = ["TYP: Plan\nGrundriss EG\n[Stempel: Genehmigt 2005]", "TYP: Leer\nEin Logo", "TYP: Foto",
+                              "Abschrift ohne Typzeile"]
+    args = ["--ordner", str(pages), "--modell", f"Fake|{chat_server['url']}|m", "--parallel", "1", "--vorgabe",
+            "--ausgabe", str(tmp_path / "ergebnis")]
+    assert ocr_vergleich.main(args) == 0
+    assert chat_server["requests"][0]["messages"][0]["content"][0]["text"] == ocr_vorgabe.PROMPT
+    head, line = capsys.readouterr().out.splitlines()[1:3]
+    assert head.endswith("Text | Plan | Foto | Leer | ohne Typzeile | Leer mit Inhalt | Foto ohne Inhalt | "
+                         "Seiten mit Stempel | Stempel gesamt")
+    assert line.endswith("| 0 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1")
+    assert "Typ: Plan" in (tmp_path / "ergebnis" / "vergleich.html").read_text(encoding="utf-8")
