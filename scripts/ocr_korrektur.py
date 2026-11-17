@@ -8,12 +8,17 @@ right to edit, the page type to choose – "Speichern & weiter" writes ``<Seite>
 
 ``--export`` writes the corrected pages as training data (one JSON line per page: the image, the prompt, the target
 answer – the "messages" + "images" layout LLaMA-Factory and ms-swift read). Pages marked "nicht verwenden" are left out.
+Whole documents (``dokument`` in seiten.json) are set aside as the test set in ``<export>.pruef.jsonl`` and never go into
+the training file; the split is a fixed hash of the document, so it is the same on every run.
 """
 from __future__ import annotations
 
 import argparse
+import contextlib
+import hashlib
 import html
 import json
+import re
 import sys
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -58,18 +63,59 @@ def discard(page: Path) -> None:
     _side(page, SKIPPED).write_text("", encoding="utf-8")
 
 
-def export(folder: Path, target: Path) -> dict:
-    counts = {t: 0 for t in TYPES}
-    with target.open("w", encoding="utf-8") as out:
+def documents(folder: Path) -> dict[str, str]:
+    """Page file name -> document, from the ``seiten.json`` of the export (empty if there is none)."""
+    listing = folder / "seiten.json" if folder.is_dir() else folder
+    if not listing.exists():
+        return {}
+    data = json.loads(listing.read_text(encoding="utf-8"))
+    rows = data.get("seiten", []) if isinstance(data, dict) else data
+    return {str(r["datei"]): str(r["dokument"]) for r in rows if isinstance(r, dict) and r.get("datei") and r.get("dokument")}
+
+
+def document_of(page: Path, known: dict[str, str]) -> str:
+    """The document a page belongs to; without seiten.json the file name without number and page suffix."""
+    return known.get(page.name) or re.sub(r"_S\d+$", "", re.sub(r"^\d+_", "", page.stem))
+
+
+def is_test(document: str, share: float) -> bool:
+    """Whether a document belongs to the test set: a fixed hash of its name, so the split is the same on every run and
+    on every computer, and a larger share only ever adds documents to the test set."""
+    return int(hashlib.sha256(document.encode("utf-8")).hexdigest()[:8], 16) / 2 ** 32 < share
+
+
+def image_path(page: Path, base: str | None) -> str:
+    """The image path written to the JSONL: absolute here, or below ``base`` on the training computer."""
+    if not base:
+        return str(page.resolve())
+    sep = "\\" if "\\" in base and "/" not in base else "/"
+    return base.rstrip("/\\") + sep + page.name
+
+
+def export(folder: Path, target: Path, *, test_target: Path | None = None, share: float = 0.0,
+           base: str | None = None, without: frozenset[str] = frozenset()) -> dict:
+    """Write the corrected pages as JSONL. With ``test_target`` and ``share`` whole documents go to the test file
+    instead of the training file; documents in ``without`` (those of another test set) are left out altogether."""
+    known = documents(folder)
+    counts = {"training": {t: 0 for t in TYPES}, "pruef": {t: 0 for t in TYPES}, "ausgelassen": 0}
+    with contextlib.ExitStack() as stack:
+        train = stack.enter_context(target.open("w", encoding="utf-8"))
+        test = stack.enter_context(test_target.open("w", encoding="utf-8")) if test_target else None
         for page in pages_in(folder):
             if state(page) != "korrigiert":
                 continue
+            document = document_of(page, known)
+            if document in without:
+                counts["ausgelassen"] += 1
+                continue
+            to_test = test is not None and is_test(document, share)
             answer = _side(page, ".soll.txt").read_text(encoding="utf-8").strip()
             page_type, _text = split(answer)
-            counts[page_type or "Text"] += 1
-            out.write(json.dumps({"messages": [{"role": "user", "content": "<image>" + PROMPT},
-                                               {"role": "assistant", "content": answer}],
-                                  "images": [str(page.resolve())]}, ensure_ascii=False) + "\n")
+            counts["pruef" if to_test else "training"][page_type or "Text"] += 1
+            (test if to_test else train).write(json.dumps(
+                {"messages": [{"role": "user", "content": "<image>" + PROMPT},
+                              {"role": "assistant", "content": answer}],
+                 "images": [image_path(page, base)]}, ensure_ascii=False) + "\n")
     return counts
 
 
@@ -174,11 +220,37 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--ordner", required=True)
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--export", help="korrigierte Seiten als Trainingsdaten (JSONL) in diese Datei schreiben")
+    ap.add_argument("--pruef-anteil", type=float, default=0.2,
+                    help="Anteil der Dokumente, die als Prüfsatz beiseitegelegt und nie trainiert werden (0.2). Die "
+                         "Aufteilung ist fest je Dokument; den Anteil später nie verkleinern. 0 = kein Prüfsatz, "
+                         "1 = der ganze Ordner ist Prüfsatz")
+    ap.add_argument("--ohne-dokumente", help="seiten.json eines anderen Prüfsatzes: Seiten aus dessen Dokumenten "
+                                             "werden ausgelassen")
+    ap.add_argument("--bild-basis", help="Ordner der Seitenbilder auf dem Trainingsrechner, z. B. /home/md/training "
+                                         "(Voreinstellung: der absolute Pfad auf diesem Rechner)")
     args = ap.parse_args(argv)
     folder = Path(args.ordner)
     if args.export:
-        counts = export(folder, Path(args.export))
-        print(f"{sum(counts.values())} Seiten nach {args.export}: " + ", ".join(f"{t} {n}" for t, n in counts.items()))
+        if not 0 <= args.pruef_anteil <= 1:
+            raise SystemExit("--pruef-anteil muss zwischen 0 und 1 liegen")
+        target = Path(args.export)
+        test_target = target.with_name(target.stem + ".pruef.jsonl") if args.pruef_anteil > 0 else None
+        without = frozenset(documents(Path(args.ohne_dokumente)).values()) if args.ohne_dokumente else frozenset()
+        if args.ohne_dokumente and not without:
+            raise SystemExit(f"Keine Dokumente in {args.ohne_dokumente} gefunden")
+        counts = export(folder, target, test_target=test_target, share=args.pruef_anteil, base=args.bild_basis,
+                        without=without)
+
+        def line(name: str, where: Path) -> str:
+            c = counts[name]
+            return f"{sum(c.values())} Seiten nach {where}: " + ", ".join(f"{t} {n}" for t, n in c.items())
+        print("Training: " + line("training", target))
+        if test_target:
+            print("Prüfsatz (nie trainieren): " + line("pruef", test_target))
+        if counts["ausgelassen"]:
+            print(f"{counts['ausgelassen']} Seiten ausgelassen (Dokumente aus {args.ohne_dokumente})")
+        if not documents(folder):
+            print("Hinweis: keine seiten.json im Ordner – das Dokument wurde aus dem Dateinamen abgeleitet.")
         return 0
     tool = Tool(folder)
     if not tool.pages:

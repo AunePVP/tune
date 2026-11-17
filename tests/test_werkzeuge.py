@@ -99,7 +99,40 @@ def test_the_correction_tool_saves_discards_and_exports(tmp_path):
     assert (tmp_path / "002_Beispiel_S1.soll.txt").read_text(encoding="utf-8") == "TYP: Leer"
     counts = ocr_korrektur.export(tmp_path, tmp_path / "training.jsonl")
     lines = [json.loads(x) for x in (tmp_path / "training.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert counts == {"Text": 0, "Plan": 1, "Foto": 0, "Leer": 1} and len(lines) == 2
+    assert counts["training"] == {"Text": 0, "Plan": 1, "Foto": 0, "Leer": 1} and len(lines) == 2
     assert lines[0]["messages"][0]["content"] == "<image>" + ocr_vorgabe.PROMPT
     assert lines[0]["messages"][1]["content"] == "TYP: Plan\nGrundriss EG\nIndex C"
     assert lines[0]["images"][0].endswith("000_Beispiel_S1.png")
+
+
+def test_the_export_sets_whole_documents_aside_as_the_test_set(tmp_path, capsys):
+    folder = tmp_path / "training"
+    folder.mkdir()
+    listing = []
+    for k in range(40):  # 20 invented documents with two pages each
+        name = f"{k:03d}_Beispiel{k // 2}_S{k % 2 + 1}.png"
+        (folder / name).write_bytes(png())
+        (folder / name).with_suffix(".soll.txt").write_text("TYP: Text\nSeite", encoding="utf-8")
+        listing.append({"datei": name, "dokument": f"Projekt/Beispiel{k // 2}.pdf", "seite": k % 2 + 1})
+    (folder / "seiten.json").write_text(json.dumps(listing), encoding="utf-8")
+    other = tmp_path / "seiten.json"
+    other.write_text(json.dumps([{"datei": "x.png", "dokument": "Projekt/Beispiel0.pdf"}]), encoding="utf-8")
+
+    def docs(path) -> list[str]:
+        known = ocr_korrektur.documents(folder)
+        rows = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()]
+        assert all(r["images"][0].startswith("/home/md/training/") for r in rows)
+        return [known[r["images"][0].rsplit("/", 1)[1]] for r in rows]
+
+    args = ["--ordner", str(folder), "--export", str(tmp_path / "t.jsonl"), "--bild-basis", "/home/md/training/",
+            "--ohne-dokumente", str(other)]
+    assert ocr_korrektur.main(args) == 0
+    train, test = docs(tmp_path / "t.jsonl"), docs(tmp_path / "t.pruef.jsonl")
+    assert test and not set(train) & set(test) and len(train) + len(test) == 38
+    assert "Projekt/Beispiel0.pdf" not in train + test and "2 Seiten ausgelassen" in capsys.readouterr().out
+    assert ocr_korrektur.main(args) == 0 and docs(tmp_path / "t.pruef.jsonl") == test  # the same split every time
+    assert ocr_korrektur.main(args + ["--pruef-anteil", "0.5"]) == 0
+    assert set(test) <= set(docs(tmp_path / "t.pruef.jsonl"))  # a larger share only adds documents
+    assert ocr_korrektur.main(args + ["--pruef-anteil", "0"]) == 0 and len(docs(tmp_path / "t.jsonl")) == 38
+    assert ocr_korrektur.document_of(folder / "007_Beispiel_S12.png", {}) == "Beispiel"
+    assert ocr_korrektur.image_path(folder / "a.png", "D:\\training") == "D:\\training\\a.png"
