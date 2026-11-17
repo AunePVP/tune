@@ -131,6 +131,19 @@ Weitere Erkenntnisse:
 - **CAD-Pläne kommen in die Trainingsdaten**, obwohl Projektakte sie im Betrieb gerade auslässt
   (`VISION_SKIP_CAD=1`, `SKIP_READ_FOLDERS=CAD`). Liest das Modell Pläne gut, können sie wieder dazu.
 - **Verfahren:** LoRA (nur ein kleiner Zusatz wird trainiert).
+- **Später weitertrainieren können** (Wunsch des Nutzers). Das Trainingsrezept bietet zwei Wege:
+  1. **Neu trainieren mit allen Daten** (Regelfall): sauberster Weg, bei einigen hundert Seiten kurz.
+  2. **Auf dem vorhandenen Adapter weitertrainieren** mit neuen Seiten: schneller, aber das Modell kann Älteres
+     verlernen. Deshalb immer einen Teil der alten Seiten beimischen und kleiner lernen lassen.
+
+  Was dafür gilt:
+  - **Jeden Lauf aufbewahren:** Adapter (nicht nur das zusammengeführte Modell), Checkpoints, Einstellungen und
+    Datenstand (welche JSONL, Seitenzahl, Fassung von `PROMPT`), je Lauf ein nummerierter Ordner.
+  - **Neue Seiten:** weiterer Export aus Projektakte in einen eigenen Ordner (`training-2`, mit `--ohne-seiten` der
+    bisherigen), Entwürfe, Korrektur, Export. Die JSONL-Dateien werden aneinandergehängt. Der Hash je Dokument hält
+    die Aufteilung in Training und Prüfsatz über alle Ordner gleich.
+  - **Derselbe Prüfsatz** für alle Läufe (er darf wachsen), sonst sind sie nicht vergleichbar.
+  - **Ändert sich `PROMPT`:** alle Soll-Texte anpassen und neu trainieren, nicht weitertrainieren.
 
 ## 6. Offen
 
@@ -235,7 +248,8 @@ sind nicht vergleichbar, Antwort-Tokens je Seite schon.
    fehlende und erfundene Zeilen, erfundene Stempel, Schleifen, Antwort-Tokens, getrennt je Seitentyp. Ausgabe als
    Übersicht ohne Seitentext und als HTML zum Durchsehen.
 5. **Trainingsrezept** auf dem Spark: Container, Werkzeug, LoRA-Einstellungen, Bildgröße wie im Betrieb (150 dpi),
-   Validierung. Erst ein kleiner Lauf mit ~200 Seiten, dann prüfen (Schritt 4), dann mehr Daten.
+   Validierung. Erst ein kleiner Lauf mit ~200 Seiten, dann prüfen (Schritt 4), dann mehr Daten. Das Rezept muss
+   beide Wege aus Abschnitt 5 können (neu mit allen Daten, weiter auf dem Adapter) und jeden Lauf nummeriert ablegen.
 6. **Übergabe an Projektakte:** fertiges Modell (LoRA zusammengeführt oder als Adapter in vLLM), Startbefehl auf dem
    Spark mit begrenztem Speicher (das Modell läuft neben einem großen Frage-Modell und dem Embedding-Dienst, eher
    8–12 GB), Beschreibung für den Einbau. Der Einbau selbst geschieht im Repository `projektakte`: eigene Einstellungen
@@ -271,6 +285,10 @@ sind nicht vergleichbar, Antwort-Tokens je Seite schon.
   `%USERPROFILE%\.cache\huggingface`. Arbeitsordner für Tests: `C:\ocr-test-lauf`.
 - Die KI-Dienste sind nur im Büronetz erreichbar. Eine Cloud-Sitzung (wie die, in der dieses Repository angelegt wurde)
   erreicht sie nicht. Messungen macht der Nutzer und schickt die Übersichten.
+- **Sitzung direkt auf dem Spark:** Dieses Repository liegt dort auch unter `~/tune`, eine KI-Sitzung kann also auf
+  dem Spark selbst laufen und Befehle, Container und Training dort starten. Die KI ist dabei weiterhin ein
+  Cloud-Modell: Sie darf **keine Seitenbilder, Seitentexte, Entwürfe, Soll-Texte oder `seiten.json` öffnen oder
+  ausgeben** (Regel „Keine Cloud“). Erlaubt sind Übersichten ohne Seitentext, Zähler, Protokolle des Trainings.
 
 ## 11. Dateien
 
