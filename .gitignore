@@ -1,0 +1,38 @@
+# Real project data never goes into this repository: page images, texts taken from them, exports, results, models.
+*.jpg
+*.jpeg
+*.png
+*.tif
+*.tiff
+*.webp
+*.bin
+*.pdf
+*.tesseract.txt
+*.entwurf.txt
+*.soll.txt
+*.nicht-verwenden
+seiten.json
+*.jsonl
+ergebnis*/
+ocr-test*/
+training*/
+pruef*/
+daten/
+data/
+
+# models, checkpoints, training runs
+*.safetensors
+*.gguf
+*.bin.index.json
+checkpoints/
+outputs/
+runs/
+modelle/
+models/
+wandb/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
