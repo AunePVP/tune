@@ -16,6 +16,8 @@ seiten.json
 ergebnis*/
 ocr-test*/
 training*/
+# ... except the training tool itself (code only; page data inside stays ignored by the patterns above)
+!/training/
 pruef*/
 daten/
 data/

@@ -1,0 +1,31 @@
+{#- Chat template for operation (vLLM --chat-template) of a GLM-OCR model trained with LLaMA-Factory's template
+    "glm_ocr": the image first, then the text, no thinking block – exactly what the model saw in training.
+    "tune.py pruefen" compares it with the training format. -#}
+{%- macro inhalt(content) -%}
+    {%- if content is string -%}
+        {{- content -}}
+    {%- else -%}
+        {%- for item in content -%}
+            {%- if item.type in ['image', 'image_url'] or 'image' in item or 'image_url' in item -%}
+                {{- '<|begin_of_image|><|image|><|end_of_image|>' -}}
+            {%- endif -%}
+        {%- endfor -%}
+        {%- for item in content -%}
+            {%- if item.type == 'text' -%}
+                {{- item.text -}}
+            {%- endif -%}
+        {%- endfor -%}
+    {%- endif -%}
+{%- endmacro -%}
+{{- '[gMASK]<sop>' -}}
+{%- for m in messages -%}
+    {%- if m.role == 'assistant' -%}
+        {{- '\n' + inhalt(m.content) -}}
+    {%- else -%}
+        {{- '<|' + m.role + '|>\n' + inhalt(m.content) -}}
+        {%- if m.role == 'user' -%}{{- '<|assistant|>' -}}{%- endif -%}
+    {%- endif -%}
+{%- endfor -%}
+{%- if add_generation_prompt -%}
+    {{- '\n' -}}
+{%- endif -%}

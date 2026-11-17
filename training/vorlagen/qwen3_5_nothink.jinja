@@ -1,0 +1,25 @@
+{#- Chat template for operation (vLLM --chat-template) of a Qwen 3.5 model trained with LLaMA-Factory's template
+    "qwen3_5_nothink": the image first, then the text, no thinking block – exactly what the model saw in training.
+    "tune.py pruefen" compares it with the training format. -#}
+{%- macro inhalt(content) -%}
+    {%- if content is string -%}
+        {{- content -}}
+    {%- else -%}
+        {%- for item in content -%}
+            {%- if item.type in ['image', 'image_url'] or 'image' in item or 'image_url' in item -%}
+                {{- '<|vision_start|><|image_pad|><|vision_end|>' -}}
+            {%- endif -%}
+        {%- endfor -%}
+        {%- for item in content -%}
+            {%- if item.type == 'text' -%}
+                {{- item.text -}}
+            {%- endif -%}
+        {%- endfor -%}
+    {%- endif -%}
+{%- endmacro -%}
+{%- for m in messages -%}
+    {{- '<|im_start|>' + m.role + '\n' + inhalt(m.content) + '<|im_end|>\n' -}}
+{%- endfor -%}
+{%- if add_generation_prompt -%}
+    {{- '<|im_start|>assistant\n' -}}
+{%- endif -%}

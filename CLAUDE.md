@@ -9,9 +9,11 @@ Lies sie ganz, bevor du etwas änderst.
 ## Stand (17.11.2026)
 
 - **Fertig:** die Vorgabe (Abschnitt 3, mit dem Nutzer geschärft), die Werkzeuge für Vergleich, Entwürfe, Korrektur
-  und Export mit festem Prüfsatz (Abschnitt 7), die Wahl der Trainingskandidaten (Abschnitt 5).
-- **Als Nächstes, in eigenen Sitzungen:** das Trainingswerkzeug bauen (Abschnitt 8.1), das Prüfskript bauen
-  (Abschnitt 8.2). Parallel exportiert und korrigiert der Nutzer die Seiten (Abschnitt 8.3).
+  und Export mit festem Prüfsatz (Abschnitt 7), die Wahl der Trainingskandidaten (Abschnitt 5), das
+  **Trainingswerkzeug** in `training/` (Abschnitt 8.1; auf dem Spark eingerichtet, Funktionstest mit erfundenen
+  Seiten für beide Kandidaten durchgelaufen).
+- **Als Nächstes:** das Prüfskript bauen (Abschnitt 8.2, eigene Sitzung). Parallel exportiert und korrigiert der
+  Nutzer die Seiten (Abschnitt 8.3) und trainiert dann selbst (Abschnitt 8.4, Anleitung `training/README.md`).
 - **Rollen:** Der Nutzer trainiert selbst. Die KI baut und prüft die Werkzeuge und Anleitungen dafür; sie startet
   kein echtes Training, höchstens einen kurzen Funktionstest mit erfundenen Seiten.
 
@@ -146,7 +148,7 @@ Weitere Erkenntnisse:
   beide mit denselben Daten trainiert und am Prüfsatz verglichen. `Qwen/Qwen3.5-4B` ist die Rückfallebene, falls 2B
   nicht reicht. Weitere Kandidaten (Xiaomi-OCR-0, LightOnOCR-3, Gemma 4) sind gesichtet und zurückgestellt
   (Abschnitt 12). Welcher der beiden in den Betrieb geht, entscheidet die Messung am Prüfsatz.
-- **Trainingswerkzeug: LLaMA-Factory** (vorbehaltlich des Funktionstests auf dem Spark, Abschnitt 8.1). Es deckt
+- **Trainingswerkzeug: LLaMA-Factory** (Funktionstest auf dem Spark am 17.11.2026 bestanden, Abschnitt 8.1). Es deckt
   beide Kandidaten ab; Ausweichwege sind ms-swift und Unsloth.
 - **Betrieb mit niedrigerer Genauigkeit** (Wunsch des Nutzers: Tempo, weniger Speicher). Trainiert wird auf dem
   Original in voller Genauigkeit (BF16), weil die Trainingswerkzeuge auf den Betriebsformaten FP8/NVFP4 nicht
@@ -184,7 +186,8 @@ Weitere Erkenntnisse:
 4. **Digitale PDF-Seiten im Training (15 %):** Sie gehen im Betrieb nie an den Seitenleser. Offen ist, ob sie bleiben
    (als leicht zu korrigierende Textseiten mit Textebene als Gegenprobe) oder durch Scans ersetzt werden.
 5. **Speicher beim Training:** ob das Training neben dem großen Frage-Modell läuft oder dieses dafür angehalten
-   wird (Abschnitt 10). Erst messen, dann entscheidet der Nutzer.
+   wird (Abschnitt 10). Gemessen (Abschnitt 8.1): rund 15 GB für Qwen3.5-2B, rund 6 GB für GLM-OCR bei kurzen
+   Antworten; mit rund 18 GB frei neben dem Frage-Modell wird es für Qwen knapp. Der Nutzer entscheidet.
 6. **Quantisierung für den Betrieb:** FP8 oder NVFP4, und mit welchem Werkzeug (llm-compressor ist recherchiert, auf
    dem Spark nicht ausprobiert). Entscheidet die Messung am Prüfsatz.
 7. Ob CAD-Pläne im Betrieb wieder dazukommen (nach der Prüfung).
@@ -202,7 +205,7 @@ Weitere Erkenntnisse:
 | 4. Entwürfe schreiben lassen | `scripts/ocr_entwurf.py` | Spark (Qwen) | gebaut |
 | 5. Korrigieren | `scripts/ocr_korrektur.py` (Browser, 127.0.0.1:8765) | PC | gebaut |
 | 6. Trainingsdaten und Prüfsatz ausgeben | `scripts/ocr_korrektur.py --export training.jsonl` (schreibt auch `training.pruef.jsonl`) | PC | gebaut |
-| 7. Training | Trainingswerkzeug in `training/` (LLaMA-Factory), startet der Nutzer | Spark | **zu bauen** (Abschnitt 8.1) |
+| 7. Training, Zusammenführen, Quantisieren, Start in vLLM | `training/tune.py` (LLaMA-Factory, llm-compressor; Anleitung `training/README.md`), startet der Nutzer | Spark | gebaut, Funktionstest bestanden |
 | 8. Prüfen gegen Soll-Texte | Prüfskript, liest `<Export>.pruef.jsonl` | Spark | **zu bauen** (Abschnitt 8.2) |
 | 9. Einbau in Projektakte | im Repository `projektakte` | – | **zu bauen** |
 
@@ -270,47 +273,75 @@ sind nicht vergleichbar, Antwort-Tokens je Seite schon.
 Jede Aufgabe ist so beschrieben, dass eine neue Sitzung sie ohne Vorwissen übernehmen kann. 8.1 und 8.2 baut die KI,
 8.3 und 8.4 macht der Nutzer, 8.5 und 8.6 folgen danach.
 
-### 8.1 Trainingswerkzeug bauen (KI, eigene Sitzung auf dem Spark)
+### 8.1 Trainingswerkzeug (erledigt am 17.11.2026)
 
-**Ziel:** Der Nutzer startet ein Training mit einem Befehl, versteht, was dabei geschieht, und kann später
-weitertrainieren. Code in `training/` mit eigener `training/README.md` (Deutsch); er darf mehr als die
-Standardbibliothek brauchen. Installation und Läufe liegen **außerhalb** des Repositorys (`~/tune-training`).
+Gebaut in `training/`, Anleitung in `training/README.md` (dort steht jede Einstellung erklärt). Installation, Modelle
+und Läufe liegen außerhalb des Repositorys in `~/tune-training` (`venv`, `venv-quant`, `LLaMA-Factory`, `modelle`,
+`laeufe`, `funktionstest`). Kurzfassung der Befehle (Spark, Ordner `~/tune`):
 
-**Was es können muss:**
-1. **Einrichten:** ein Skript, das LLaMA-Factory mit PyTorch für CUDA 13 in `~/tune-training` installiert und prüft
-   (Grafikkarte sichtbar, beide Modelle ladbar). Was am 17.11.2026 schon geklärt wurde, steht unten.
-2. **Trainieren:** ein Befehl mit Modell (`qwen2b`, `glm-ocr`, `qwen4b`) und einer oder mehreren JSONL-Dateien aus
-   dem Export. Das Werkzeug weigert sich, eine `*.pruef.jsonl` zu trainieren.
-3. **Zwei Wege** (Abschnitt 5): neu mit allen Daten (Regelfall) und weiter auf dem Adapter eines früheren Laufs.
-4. **Jeden Lauf nummeriert ablegen:** Adapter, Checkpoints, Einstellungen, Datenstand (welche JSONL, Seitenzahl je
-   Typ, Prüfsumme von `PROMPT`), Verlustkurve. Ein Lauf überschreibt nie einen anderen.
-5. **Bildgröße wie im Betrieb:** Seiten mit 150 dpi, A4 ≈ 2,2 MP. Die Beispiel-Einstellung von LLaMA-Factory
-   (`image_max_pixels: 262144`) ist dafür rund achtmal zu klein und muss gesetzt werden; zu klären ist, was mit
-   größeren Seiten (Pläne, Abschnitt 6.9) geschieht.
-6. **Validierung beim Training:** ein kleiner Teil der Trainingsdaten (ganze Dokumente), nie der Prüfsatz.
-7. **Nach dem Training:** Adapter zusammenführen, quantisieren (FP8, NVFP4), Startbefehl für vLLM mit begrenztem
-   Speicher. Jede Fassung bekommt einen Namen, unter dem das Prüfskript sie misst.
-8. **Anleitung:** jede Einstellung in einem Satz erklärt (Rang, Lernrate, Epochen, Stapelgröße, Bildgröße, was
-   eingefroren ist), dazu „woran erkenne ich, dass ein Lauf gut oder schlecht war“ und „was tun bei zu wenig Speicher“.
+```bash
+bash training/einrichten.sh                      # einmal; mit --quantisierung auch llm-compressor
+python3 training/tune.py pruefen --modell qwen2b --modell glm-ocr
+python3 training/tune.py trainieren --modell qwen2b --daten ~/training.jsonl                # neu
+python3 training/tune.py trainieren --modell qwen2b --daten ~/training-2.jsonl --weiter-von 1   # weiter
+python3 training/tune.py laeufe
+python3 training/tune.py zusammenfuehren --lauf 1
+python3 training/tune.py quantisieren --lauf 1 --fassung fp8      # oder nvfp4
+python3 training/tune.py starten --lauf 1 --fassung fp8 --speicher-gb 10 [--ausfuehren]
+python3 training/tune.py fragen --lauf 1 --fassung fp8 --bild <Seite>
+```
 
-**Abnahme der Aufgabe:** Funktionstest mit wenigen **erfundenen** Seiten (im Test erzeugt, keine echten Daten) für
-beide Modelle: einrichten, kurz trainieren, weitertrainieren, zusammenführen, in vLLM starten, eine Seite fragen.
-Kein echtes Training durch die KI. `python -m pytest -q` grün für alles, was ohne Grafikkarte prüfbar ist.
+**Was das Werkzeug festlegt:**
+- Je Lauf ein nummerierter Ordner `~/tune-training/laeufe/NNN-<modell>` mit `einstellungen.yaml`, `lauf.json`
+  (JSONL mit Prüfsumme, Seiten je Typ, Prüfsumme von `PROMPT`, Verlust), `daten/`, `adapter/` (Checkpoint je Epoche,
+  Verlustkurve), `protokoll.log`, später `modell-bf16`, `modell-fp8`, `modell-nvfp4`. Nummern werden nie
+  wiederverwendet.
+- Abgelehnt werden: `*.pruef.jsonl`; Seiten oder Dokumente, die in der `*.pruef.jsonl` neben der Datendatei oder in
+  einem mit `--pruefsatz` genannten Prüfsatz vorkommen; Zeilen mit einer anderen Fassung von `PROMPT` oder ohne
+  Typzeile; fehlende Bilder; ein Start bei zu wenig freiem Speicher (außer mit `--trotzdem`).
+- Validierung: 10 % der Dokumente der Trainingsdaten (fester Hash je Dokument mit eigenem Salz, unabhängig vom
+  Prüfsatz). Das Dokument wird aus dem Bildnamen abgeleitet (`NNN_<Datei>_S<Seite>`), weil die JSONL kein Feld
+  `dokument` hat.
+- Weitertrainieren: Adapter des früheren Laufs, halbe Lernrate (5e-5), 2 Epochen, alte Trainingsseiten beigemischt
+  (`--alt-anteil 0.5`); abgelehnt bei anderem Modell oder geändertem `PROMPT`.
+- Voreinstellungen wie in der offiziellen GLM-OCR-Anleitung: Rang 8, Lernrate 1e-4, 3 Epochen, BF16, LoRA auf allen
+  Schichten des Sprachteils, Bildteil und Brücke eingefroren; Stapel 1 × Sammeln 8; Länge 8.192 Tokens.
+- **Bildgröße:** `image_max_pixels` 2.359.296 (1536², A4 mit 150 dpi bleibt unverkleinert). Größere Seiten werden
+  proportional verkleinert, im Training und – über den Startbefehl – genauso im Betrieb (mit einer übergroßen Seite
+  für beide Modelle geprüft). Für große Pläne heißt das: A3 kommt mit rund 110 dpi an, A0 mit rund 40 dpi
+  (Abschnitt 6.9 bleibt offen).
+- **Vorlagen:** LLaMA-Factory verpackt eine Anfrage im Training anders als die dem Modell beiliegende Vorlage, die
+  vLLM sonst nimmt (bei Qwen fügt diese einen leeren Denkblock ein). `training/vorlagen/*.jinja` erzeugen genau die
+  Form des Trainings; sie liegen als `betrieb.jinja` neben jedem fertigen Modell und gehen mit `--chat-template` an
+  vLLM. `tune.py pruefen` vergleicht beide Formen Token für Token. **Für den Einbau in Projektakte (8.6):** das
+  Modell mit dem Startbefehl aus `tune.py starten` betreiben; `enable_thinking` muss dann nicht mitgeschickt werden.
+- Name einer Fassung für Betrieb und Prüfskript: `<Lauf>-<Fassung>`, z. B. `001-qwen2b-fp8`; Container
+  `tune-<Name>`, Port 8004, nur lokal erreichbar.
+- Schutz bei Speichermangel: Training, Quantisieren und der vLLM-Container des Werkzeugs sind so markiert
+  (`oom_score_adj`), dass das System sie zuerst beendet und nicht andere Dienste.
 
-**Am 17.11.2026 auf dem Spark geklärt:**
-- LLaMA-Factory (Stand `885a4ca` vom 17.11.2026) kennt die Vorlagen `qwen3_5`, `qwen3_5_nothink` (ohne Denken, die
-  richtige für hier), `glm_ocr` und `gemma4`. Es verlangt Python ≥ 3.11, transformers ≤ 5.17.0, peft 0.18.
-- Offizielle GLM-OCR-Anleitung (LoRA): `template: glm_ocr`, `trust_remote_code: true`, `lora_rank: 8`,
-  `lora_target: all`, Lernrate 1e-4, 3 Epochen, `bf16`, ab 8 GB; Zusammenführen mit `llamafactory-cli export`.
-  Laut Anleitung brauchte GLM-OCR eine neuere transformers-Fassung als die damals voreingestellte.
-- Das Datenformat des Exports (`messages` + `images`, „sharegpt“) passt; es braucht einen Eintrag in
-  `dataset_info.json` und eine `<image>`-Marke je Bild (ist im Export so).
-- Spark: Python 3.12.3 **ohne** `Python.h` (`python3-dev` fehlt; ohne es scheitert das Training laut
-  NVIDIA-Anleitung). Ausweg ohne `sudo`: `uv venv --python-preference only-managed --python 3.12` (`uv` liegt in
-  `~/.local/bin`). Treiber 580, CUDA 13.0, PyTorch-Index `https://download.pytorch.org/whl/cu130` (unbestätigt, ob
-  es dort ARM64-Räder gibt). 2,4 TB frei.
-- In `~/tune-training` liegen ein Klon von LLaMA-Factory und eine **leere** venv; die Installation wurde abgebrochen.
-- Ein Erfahrungsbericht nennt den Fehler „model type 'qwen3_5' not recognized“ bei zu alter transformers-Fassung.
+**Funktionstest am 17.11.2026** (erfundene Seiten, `training/funktionstest.py`; kein echtes Training):
+- Durchgelaufen für `qwen2b` (BF16, FP8, NVFP4) und `glm-ocr` (BF16): trainieren, weitertrainieren,
+  zusammenführen, quantisieren, in vLLM starten, Seite fragen.
+- Installiert: PyTorch 2.14.1+cu130 (ARM64-Räder gibt es), transformers 5.17.0, peft 0.18.1, LLaMA-Factory
+  `885a4ca`, llm-compressor 0.15.0 (eigene `venv-quant`, weil es `datasets` ≥ 4.8 braucht, LLaMA-Factory ≤ 4.0);
+  vLLM 0.27.1 im Image `vllm/vllm-openai:latest` (Stand 08/2026; aktuell wäre 0.34).
+- Speicher im Training mit A4-Seiten und kurzen Antworten: `qwen2b` rund 15 GB, `glm-ocr` rund 6 GB; rund 5 s bzw.
+  2,5 s je Seite und Epoche. In vLLM mit 8-GB-Grenze belegten beide 4–6 GB (zwei gleichzeitige Anfragen).
+- **GLM-OCR in FP8 läuft in vLLM 0.27.1 nicht richtig:** Die quantisierte Fassung liest direkt mit transformers
+  richtig, in vLLM schreibt sie Unsinn in Schleife. Qwen in FP8 läuft richtig. Vor einer Messung von GLM-OCR in FP8
+  ein neueres vLLM-Image holen und an einer Seite prüfen. GLM-OCR in NVFP4 ist nicht ausprobiert.
+- Das kaum trainierte Qwen-Modell schrieb auf manchen Seiten einen leeren Denkblock (`<think></think>`) vor die
+  Typzeile – das Grundmodell kennt ihn so. Nach echtem Training prüfen; bleibt er, ist die Alternative die Vorlage
+  `qwen3_5` mit abgeschaltetem Denken (setzt den leeren Denkblock in die Anfrage). Das Prüfskript (8.2) sollte
+  solche Antworten als „ohne Typzeile“ zählen.
+- Stolpersteine, im Werkzeug berücksichtigt: transformers 5 kennt `warmup_ratio` und `overwrite_output_dir` nicht
+  mehr; `uv` braucht für die großen NVIDIA-Pakete ein längeres Zeitlimit; der Hugging-Face-Cache von GLM-OCR gehört
+  `root` (von Docker geladen), deshalb der eigene Ordner `~/tune-training/modelle`; vLLM lehnt A4-Seiten für GLM-OCR
+  ohne `--max-num-batched-tokens 16384` ab; GLM-OCR zählt die Bildgrenze im Betrieb doppelt
+  (`size.longest_edge` = 2 × Bildfläche); „CUDA out of memory“ gleich beim Start kommt vom vollen Dateicache.
+- Nicht geprüft: `qwen4b` (Original nicht heruntergeladen), ein Training mit echten Seiten und langen Antworten,
+  das Tempo in vLLM, die Güte von FP8/NVFP4 (das misst erst das Prüfskript).
 
 ### 8.2 Prüfskript bauen (KI)
 
@@ -375,8 +406,11 @@ Typzeile oder mit Inhalt bei `TYP: Leer` als Fehler behandeln.
 - **Stand auf dem Spark am 17.11.2026:** Von 121 GB waren rund 30 GB verfügbar; das große Frage-Modell (Container
   `vllm-fn-tp1`) belegt den Großteil. Der Container `qwen35-4b` lief nicht, ein App-Container von Projektakte auch
   nicht. Im Hugging-Face-Cache liegen `zai-org/GLM-OCR` und zwei quantisierte Qwen-3.5-4B-Fassungen, kein Original.
-  Für das Training (BF16, große Bilder) reicht der freie Speicher neben dem Frage-Modell voraussichtlich nicht;
-  vorher messen oder das Frage-Modell für die Dauer des Trainings anhalten (Entscheidung des Nutzers).
+  Neben dem Frage-Modell waren später nur rund 18 GB verfügbar; das Training braucht rund 15 GB (Qwen3.5-2B) bzw.
+  6 GB (GLM-OCR), Abschnitt 8.1. Für den Funktionstest hat der Nutzer das Frage-Modell selbst gestoppt; ob es für
+  echte Trainings angehalten wird, entscheidet er. Die Grundmodelle `Qwen3.5-2B` und `GLM-OCR` liegen jetzt in
+  `~/tune-training/modelle` (der Cache-Ordner von GLM-OCR gehört `root`); `Qwen/Qwen3.5-4B` fehlt weiterhin.
+  `python3` des Systems hat kein `pytest`; Tests laufen mit `uv run --no-project --with pytest python -m pytest -q`.
 - **Sitzung direkt auf dem Spark:** Dieses Repository liegt dort auch unter `~/tune`, eine KI-Sitzung kann also auf
   dem Spark selbst laufen und Befehle, Container und Training dort starten. Die KI ist dabei weiterhin ein
   Cloud-Modell: Sie darf **keine Seitenbilder, Seitentexte, Entwürfe, Soll-Texte oder `seiten.json` öffnen oder
@@ -390,7 +424,13 @@ Typzeile oder mit Inhalt bei `TYP: Leer` als Fehler behandeln.
 | `scripts/ocr_vergleich.py` | Modelle auf einem Seitenordner vergleichen (OpenAI-kompatible Server; Tempo, Tokens, Schleifen; HTML nebeneinander; `--extra-body`; `--vorgabe` für `PROMPT` und Typzeile) |
 | `scripts/ocr_entwurf.py` | Entwürfe nach der Vorgabe erzeugen (`<Seite>.entwurf.txt`, fortsetzbar) |
 | `scripts/ocr_korrektur.py` | Korrigieren im Browser (`<Seite>.soll.txt`), Export als JSONL, getrennt in Training und Prüfsatz nach Dokument (`--pruef-anteil`, `--ohne-dokumente`, `--bild-basis`) |
-| `tests/` | Tests der Werkzeuge (ohne echte Daten) |
+| `training/README.md` | Anleitung zum Training: jeder Schritt, jede Einstellung, „war der Lauf gut?“, „zu wenig Speicher“ |
+| `training/einrichten.sh` | Trainingsumgebung in `~/tune-training` anlegen (LLaMA-Factory, PyTorch für CUDA 13; `--quantisierung`: llm-compressor in `venv-quant`) |
+| `training/tune.py` | alle Befehle des Trainings: `pruefen`, `trainieren` (neu oder `--weiter-von`), `laeufe`, `zusammenfuehren`, `quantisieren`, `starten`, `stoppen`, `fragen` (nur Standardbibliothek) |
+| `training/venv_hilfe.py`, `training/quantisieren.py` | Teile, die die Trainings- bzw. Quantisierungsumgebung brauchen |
+| `training/vorlagen/*.jinja` | Gesprächsvorlagen für den Betrieb in vLLM, in genau der Form des Trainings |
+| `training/funktionstest.py` | ganze Kette mit erfundenen Seiten |
+| `tests/` | Tests der Werkzeuge (ohne echte Daten); `test_training.py` prüft das Trainingswerkzeug ohne Grafikkarte |
 | Projektakte: `projektakte/ocr_testseiten.py` | Seiten exportieren (Prüfsatz, `--training`) |
 | Projektakte: `DECISIONS.md` „Was auf eine Seite gehört“ und frühere Abschnitte zur Bildauswertung | Hintergrund |
 
