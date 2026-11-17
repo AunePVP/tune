@@ -57,10 +57,19 @@ def test_drafts_follow_the_target_form_and_resume(tmp_path, chat_server):
     chat_server["answers"] = ["TYP: Plan\nGrundriss EG"]
     model = ocr_vergleich.parse_model(f"Qwen|{chat_server['url']}|m")
     stats = ocr_entwurf.draft(tmp_path, model, parallel=1, max_tokens=50, timeout=5, extra=None)
-    assert stats == {"seiten": 3, "fehler": 0, "ohne_typ": 0, "schleife": 0}
+    assert stats == {"seiten": 3, "fehler": 0, "ohne_typ": 0, "schleife": 0, "meldungen": {}}
     assert chat_server["requests"][0]["messages"][0]["content"][0]["text"] == ocr_vorgabe.PROMPT
     assert (tmp_path / "000_Beispiel_S1.entwurf.txt").read_text(encoding="utf-8") == "TYP: Plan\nGrundriss EG"
     assert ocr_entwurf.draft(tmp_path, model, parallel=1, max_tokens=50, timeout=5, extra=None)["seiten"] == 0
+
+
+def test_drafts_name_the_reason_when_the_model_is_unreachable(tmp_path, capsys):
+    _pages(tmp_path, 2)
+    model = ocr_vergleich.parse_model("Qwen|http://127.0.0.1:9/v1|m")  # nothing listens on port 9
+    stats = ocr_entwurf.draft(tmp_path, model, parallel=1, max_tokens=50, timeout=5, extra=None)
+    assert stats["fehler"] == 2 and sum(stats["meldungen"].values()) == 2
+    assert capsys.readouterr().out.count("Fehler bei") == 1  # each reason once, not once per page
+    assert not list(tmp_path.glob("*.entwurf.txt"))
 
 
 def test_the_correction_tool_saves_discards_and_exports(tmp_path):

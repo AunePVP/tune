@@ -22,13 +22,17 @@ from ocr_vorgabe import PROMPT, join, split  # noqa: E402
 
 def draft(folder: Path, model: dict, *, parallel: int, max_tokens: int, timeout: float, extra: dict | None) -> dict:
     todo = [p for p in pages_in(folder) if not p.with_name(p.stem + ".entwurf.txt").exists()]
-    stats = {"seiten": len(todo), "fehler": 0, "ohne_typ": 0, "schleife": 0}
+    stats = {"seiten": len(todo), "fehler": 0, "ohne_typ": 0, "schleife": 0, "meldungen": {}}
 
     def one(page: Path) -> None:
         res = ask(model["url"], model["model"], PROMPT, page.read_bytes(), MIME[page.suffix.lower()], max_tokens,
                   timeout, extra)
         if res["error"]:
             stats["fehler"] += 1
+            first = stats["meldungen"].setdefault(res["error"], 0) == 0
+            stats["meldungen"][res["error"]] += 1
+            if first:  # say why at once, not only in the count at the end
+                print(f"  Fehler bei {page.name}: {res['error']}", flush=True)
             return
         page_type, text = split(res["text"])
         if page_type is None:
@@ -61,7 +65,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{stats['seiten']} Entwürfe – {stats['fehler']} Fehler (beim nächsten Aufruf erneut), "
           f"{stats['ohne_typ']} ohne Typzeile (als Text angenommen), {stats['schleife']} Schleifen/abgeschnitten (leer "
           f"gelassen)")
-    return 0
+    for message, count in sorted(stats["meldungen"].items(), key=lambda m: -m[1]):
+        print(f"  {count}× {message}")
+    return 1 if stats["fehler"] else 0
 
 
 if __name__ == "__main__":
