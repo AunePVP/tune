@@ -13,6 +13,7 @@
 *.soll.txt
 *.nicht-verwenden
 seiten.json
+seitentypen.csv
 *.jsonl
 ergebnis*/
 ocr-test*/

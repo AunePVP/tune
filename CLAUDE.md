@@ -574,6 +574,7 @@ Typzeile oder mit Inhalt bei `TYP: Leer` als Fehler behandeln.
 | `scripts/ocr_vergleich.py` | Modelle auf einem Seitenordner vergleichen (OpenAI-kompatible Server; Tempo, Tokens, Schleifen; HTML nebeneinander; `--extra-body`; `--vorgabe` für `PROMPT` und Typzeile) |
 | `scripts/ocr_entwurf.py` | Entwürfe nach der Vorgabe erzeugen (`<Seite>.entwurf.txt`, fortsetzbar); `--trainiert`, wenn ein feingetuntes Modell die Entwürfe schreibt |
 | `scripts/ocr_bloecke.py` | Lage der Textzeilen je Seite mit dem lokalen `tesseract` ermitteln (`<Seite>.bloecke.json`); damit markiert das Korrekturwerkzeug nach einem Klick auf die Seite die passende Textstelle und umgekehrt. Nur Hilfe beim Korrigieren, geht nie in die Soll-Texte |
+| `scripts/seitentyp.py` | Seitentyp je Bild (Text/Plan/Bild/Leer/Unsicher) von einem Bildmodell zuordnen lassen → `seitentypen.csv` im Ordner (Daten für einen einfachen Klassifizierer; fortsetzbar) |
 | `scripts/ocr_korrektur.py` | Korrigieren im Browser (`<Seite>.soll.txt`), Export als JSONL, getrennt in Training und Prüfsatz nach Dokument (`--pruef-anteil`, `--ohne-dokumente`, `--bild-basis`); `--host` für den Zugriff über Tailscale; Seite „Training“ (Export und Start von `training/tune.py`), wenn `training/` daneben liegt |
 | `training/tune-korrektur.service` | Vorlage: Korrekturwerkzeug als Dienst auf dem Spark |
 | `training/README.md` | Anleitung zum Training: jeder Schritt, jede Einstellung, „war der Lauf gut?“, „zu wenig Speicher“ |
